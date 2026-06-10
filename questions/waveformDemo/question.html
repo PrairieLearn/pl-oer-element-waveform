@@ -1,0 +1,268 @@
+<pl-question-panel>
+    <h4>Reference: D Flip-Flop</h4>
+    <pl-figure file-name="ff.png" directory="clientFilesQuestion"
+               alt="A D flip-flop: input D and clock clk, output Q.">
+    </pl-figure>
+    <p>
+        This non-editable reference diagram shows D flip-flop behavior.
+        It uses <code>signals-param="ref_signals"</code>; the <code>Q</code>
+        signal is precomputed and displayed read-only.
+    </p>
+</pl-question-panel>
+
+<pl-waveform answers-name="ref" label="Reference: D Flip-Flop" hscale="1.5" signals-param="ref_signals"></pl-waveform>
+
+<pl-question-panel>
+    <hr>
+    <h4>Part 1: D Flip-Flop — Cell Feedback (toggle input)</h4>
+    <p>
+        This is the same circuit as the reference above. It uses the default <code>input-mode="toggle"</code>:
+        click each cell to cycle between <code>0</code> and <code>1</code>.
+        Uses <code>feedback="cell"</code> (default) to show
+        per-cell correct/incorrect overlays and a detail table with submitted and expected values.
+    </p>
+    <p>
+        Visual cue to notice: the <code>Q</code> waveform stays primary, while hover, corner badges,
+        and light red/green grading accents stay secondary.
+    </p>
+    <p>
+        The <code>dff_signals</code> param uses the shorthand authoring API —
+        <code>values</code> for read-only signals and <code>initial</code> +
+        <code>correct_answers</code> for editable signals — instead of raw WaveDrom JSON.
+    </p>
+</pl-question-panel>
+
+<pl-waveform answers-name="part1" label="Part 1: D Flip-Flop (cell)" hscale="1.5" feedback="cell" signals-param="dff_signals"></pl-waveform>
+
+<pl-question-panel>
+    <hr>
+    <h4>Part 2: JK Flip-Flop — Row Feedback (toggle input)</h4>
+    <p>
+        A <strong>JK flip-flop</strong> behaves as follows on each positive clock edge:
+    </p>
+    <table class="table table-bordered" style="width: auto;">
+        <thead>
+            <tr><th>J</th><th>K</th><th>Q<sub>next</sub></th></tr>
+        </thead>
+        <tbody>
+            <tr><td>0</td><td>0</td><td>Q (hold)</td></tr>
+            <tr><td>0</td><td>1</td><td>0 (reset)</td></tr>
+            <tr><td>1</td><td>0</td><td>1 (set)</td></tr>
+            <tr><td>1</td><td>1</td><td>Q' (toggle)</td></tr>
+        </tbody>
+    </table>
+    <p>
+        Uses <code>feedback="row"</code> to show per-signal row correctness with
+        score badges ("All correct" or "X/Y correct").
+        Also demonstrates two editable signals (<code>Q</code> and <code>Q'</code>)
+        with toggle input.
+    </p>
+    <p>
+        Visual cue to notice: row mode avoids per-cell badge clutter and instead uses a softer row tint
+        plus one summary pill at the right edge.
+    </p>
+</pl-question-panel>
+
+<pl-waveform answers-name="part2" label="Part 2: JK Flip-Flop (row)" hscale="1.5" feedback="row" signals-param="jk_signals"></pl-waveform>
+
+<pl-question-panel>
+    <hr>
+    <h4>Part 3: D Flip-Flop with Enable — Table Feedback (toggle input)</h4>
+    <p>
+        A <strong>D flip-flop with enable</strong> only captures <code>D</code>
+        when <code>EN = 1</code>. Otherwise <code>Q</code> holds.
+    </p>
+    <p>
+        Uses <code>feedback="table"</code> to show only an overall score summary
+        (no per-cell or per-row detail). Also demonstrates multiple editable signals
+        (<code>Q</code> and <code>Q'</code>) with toggle input.
+    </p>
+    <p>
+        Visual cue to notice: the interactive waveform stays clean after grading because only the overall
+        summary updates, not each individual row or cell.
+    </p>
+</pl-question-panel>
+
+<pl-waveform answers-name="part3" label="Part 3: D-FF with Enable (table)" hscale="1.5" feedback="table" signals-param="dffen_signals"></pl-waveform>
+
+<pl-question-panel>
+    <hr>
+    <h4>Part 4: 2-Input AND Gate — Multiple Boxes per Clock Period (text input)</h4>
+    <p>
+        This is a <strong>combinational AND gate</strong> with output <code>Y = A &amp; B</code>.
+        Both inputs and the output use <code>period="0.5"</code>, so they change
+        twice per clock cycle.
+    </p>
+    <p>
+        Uses <code>input-mode="text"</code> with <code>period="0.5"</code>:
+        two answer boxes appear inside each full clock period, directly demonstrating
+        sub-cycle text input with multiple answer boxes per clock period.
+        See Part 5 for the same circuit using interactive toggle cells.
+    </p>
+    <p>
+        Visual cue to notice: this is the fallback mode for dense editable slots where text entry is still
+        the clearest interaction.
+    </p>
+</pl-question-panel>
+
+<pl-waveform answers-name="part4" label="Part 4: AND Gate (sub-cycle)" hscale="3" feedback="cell" input-mode="text" weight="2" signals-param="subcycle_signals"></pl-waveform>
+
+<pl-question-panel>
+    <hr>
+    <h4>Part 5: 2-Input AND Gate — Multiple Toggle Cells per Clock Period</h4>
+    <p>
+        Same AND gate as Part 4 (<code>Y = A &amp; B</code>), this time using the default
+        <code>input-mode="toggle"</code> with <code>period="0.5"</code>.
+        Click (or press Space) on each half-period cell to cycle between <code>0</code>
+        and <code>1</code>. Two toggle cells appear inside each full clock period,
+        demonstrating sub-cycle interactive input.
+    </p>
+    <p>
+        Visual cue to notice: denser half-period rows add light separators to help track the smaller cells
+        without overpowering the waveform trace.
+    </p>
+</pl-question-panel>
+
+<pl-waveform answers-name="part5" label="Part 5: AND Gate (toggle sub-cycle)" hscale="3" feedback="cell" signals-param="subcycle_toggle_signals"></pl-waveform>
+
+<pl-question-panel>
+    <hr>
+    <h4>Part 6: Tri-State Buffer — Unknown Outputs (text input)</h4>
+    <p>
+        A <strong>tri-state buffer</strong> drives <code>Y = D</code> when
+        <code>EN = 1</code>. When <code>EN = 0</code> the output is
+        <em>high-impedance</em>, represented as <code>x</code>.
+    </p>
+    <p>
+        Uses <code>input-mode="text"</code> with <code>allowed_values=["0","1","x"]</code>:
+        enter <code>0</code>, <code>1</code>, or <code>x</code> in each box.
+        Text mode is used here so the typed value and WaveDrom-rendered value can be compared
+        for a row where <code>x</code> (high impedance / unknown) is a valid answer.
+    </p>
+    <p>
+        Visual cue to notice: valid <code>x</code> answers should read differently from unanswered cells,
+        so "unknown" and "not filled in yet" are not visually interchangeable.
+    </p>
+</pl-question-panel>
+
+<pl-waveform answers-name="part6" label="Part 6: Tri-State Buffer (x outputs)" hscale="1.5" feedback="cell" input-mode="text" signals-param="tristate_signals"></pl-waveform>
+
+<pl-question-panel>
+    <hr>
+    <h4>Part 7: Register File Read Timing — Hex Bus Answers</h4>
+    <p>
+        A 4x4 register file has two asynchronous read ports and one synchronous
+        write port. Determine the read data shown on each read port.
+    </p>
+    <p>
+        Uses <code>input-mode="text"</code> with
+        <code>allowed_values=["0", ..., "F"]</code> so each editable bus slot accepts
+        a single hexadecimal digit.
+    </p>
+    <p>The register file begins with these values.</p>
+    <table class="table table-striped table-bordered table-condensed" style="width: 50%; margin: 0 auto;">
+        <thead>
+            <tr>
+                <th style="width: 25%; text-align: center;">R[0]</th>
+                <th style="width: 25%; text-align: center;">R[1]</th>
+                <th style="width: 25%; text-align: center;">R[2]</th>
+                <th style="width: 25%; text-align: center;">R[3]</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td style="width: 25%; text-align: center;">{{params.regread_reg0}}</td>
+                <td style="width: 25%; text-align: center;">{{params.regread_reg1}}</td>
+                <td style="width: 25%; text-align: center;">{{params.regread_reg2}}</td>
+                <td style="width: 25%; text-align: center;">{{params.regread_reg3}}</td>
+            </tr>
+        </tbody>
+    </table>
+</pl-question-panel>
+
+<pl-waveform
+    answers-name="part7"
+    label="Part 7: Register read data"
+    hscale="4"
+    feedback="cell"
+    input-mode="toggle"
+    signals-param="regfile_read_hex_signals">
+</pl-waveform>
+
+<pl-question-panel>
+    <hr>
+    <h4>Part 8: Register File Write Timing — Hex Register State</h4>
+    <p>
+        A 4x4 register file has four 4-bit registers. The timing diagram shows
+        the write-side inputs. Determine the value stored in each register at each
+        clock period.
+    </p>
+    <p>
+        This uses text input with hex-valued editable rows, so each register history
+        is entered as a sequence of single hexadecimal digits.
+    </p>
+</pl-question-panel>
+
+<pl-waveform
+    answers-name="part8"
+    label="Part 8: Register state after writes"
+    hscale="1.5"
+    feedback="row"
+    input-mode="toggle"
+    signals-param="regfile_write_hex_signals">
+</pl-waveform>
+
+<pl-question-panel>
+    <hr>
+    <h4>Part 10: Register Read — Hex Toggle Input</h4>
+    <p>
+        A 4-entry register file with one asynchronous read port.
+        Each half-cycle the read address changes; determine the output data bus value.
+    </p>
+    <p>
+        Uses <code>input-mode="toggle"</code> with
+        <code>allowed_values=["0"&hellip;"F"]</code>:
+        click (or press Space) on each cell to cycle through all 16 hex values.
+        This demonstrates that toggle mode supports non-binary answer sets.
+    </p>
+    <p>The register file contains:</p>
+    <table class="table table-bordered" style="width: auto;">
+        <thead>
+            <tr>
+                <th>reg[0]</th><th>reg[1]</th><th>reg[2]</th><th>reg[3]</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>{{params.hex_toggle_reg.0}}</td>
+                <td>{{params.hex_toggle_reg.1}}</td>
+                <td>{{params.hex_toggle_reg.2}}</td>
+                <td>{{params.hex_toggle_reg.3}}</td>
+            </tr>
+        </tbody>
+    </table>
+</pl-question-panel>
+
+<pl-waveform answers-name="part10" label="Part 10: Hex Toggle" hscale="3" feedback="cell" signals-param="hex_toggle_signals"></pl-waveform>
+
+<pl-question-panel>
+    <hr>
+    <h4>Part 9: Mixed Fixed and Editable Cells (row feedback, text input)</h4>
+    <p>
+        This row demonstrates a mixed pattern in one signal:
+        first 2 cells fixed, then 3 editable cells, then 2 fixed cells.
+    </p>
+    <p>
+        Uses <code>input-mode="text"</code> with <code>feedback="row"</code> to show
+        that only the middle segment is answerable while fixed segments stay read-only.
+    </p>
+</pl-question-panel>
+
+<pl-waveform
+    answers-name="part9"
+    label="Part 9: 2 fixed, 3 editable, 2 fixed"
+    hscale="1.5"
+    feedback="row"
+    input-mode="text"
+    signals-param="mixed_fixed_edit_fixed_signals">
+</pl-waveform>

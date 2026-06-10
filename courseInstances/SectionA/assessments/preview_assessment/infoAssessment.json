@@ -1,0 +1,27 @@
+{
+    "uuid": "1d16ff2f-07a7-4a58-a5c2-3212110e8bf6",
+    "type": "Homework",
+    "title": "Element Preview",
+    "set": "Homework",
+    "number": "1",
+    "allowAccess": [
+        {
+            "mode": "Public",
+            "credit": 100
+        }
+    ],
+    "zones": [
+        {
+	    "title": "Element preview", 
+            "questions": [
+                { "id": "waveformDemo",           "points": 1}
+            ]
+        },
+        {
+	    "title": "How to use this element in your course", 
+            "questions": [
+                { "id": "howTo",                     "points": 0}                 
+            ]
+        }
+    ]
+}

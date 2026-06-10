@@ -1,0 +1,13 @@
+{
+    "controller": "pl-waveform.py",
+    "dependencies": {
+        "elementStyles": [
+            "pl-waveform.css"
+        ],
+        "elementScripts": [
+            "wavedrom/default.js",
+            "wavedrom/wavedrom.min.js",
+            "pl-waveform.js"
+        ]
+    }
+}

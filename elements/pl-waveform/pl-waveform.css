@@ -1,0 +1,520 @@
+/* ── Waveform container ────────────────────────────────────────── */
+.pl-waveform {
+    margin-bottom: 1rem;
+    --pl-waveform-interactive-stroke: #1f2933;
+    --pl-waveform-interactive-separator: rgba(100, 116, 139, 0.26);
+    --pl-waveform-interactive-hover: rgba(13, 110, 253, 0.14);
+    --pl-waveform-interactive-focus: rgba(13, 110, 253, 0.24);
+    --pl-waveform-interactive-correct: rgba(40, 167, 69, 0.1);
+    --pl-waveform-interactive-correct-border: rgba(40, 167, 69, 0.55);
+    --pl-waveform-interactive-incorrect: rgba(220, 53, 69, 0.1);
+    --pl-waveform-interactive-incorrect-border: rgba(220, 53, 69, 0.52);
+    --pl-waveform-interactive-unanswered: rgba(108, 117, 125, 0.08);
+    --pl-waveform-interactive-unanswered-border: rgba(108, 117, 125, 0.42);
+    --pl-waveform-interactive-warning: rgba(255, 193, 7, 0.18);
+    --pl-waveform-interactive-warning-border: rgba(255, 193, 7, 0.72);
+    /* editable row band */
+    --pl-waveform-editable-row-bg: rgba(13, 110, 253, 0.055);
+    --pl-waveform-editable-cell-border: rgba(13, 110, 253, 0.45);
+}
+
+/* WaveDrom renders editable (x) cells in pink (#f5c2c0, class s14).
+   Override to neutral gray in the question panel so unanswered cells
+   read as "not yet answered" rather than resembling an error state. */
+[data-panel="question"] svg .s14 {
+    fill: #e9ecef !important;
+}
+
+/* ── Question panel: text fallback controls ───────────────────── */
+.pl-waveform-question-control {
+    box-sizing: border-box;
+    z-index: 10;
+    outline: none;
+}
+
+.pl-waveform-proxy {
+    width: 38px;
+    min-width: 38px;
+    height: 22px;
+    padding: 1px 2px;
+    border: 1px solid rgba(108, 117, 125, 0.55);
+    border-radius: 3px;
+    background-color: rgba(255, 255, 255, 0.9);
+    color: #212529;
+    caret-color: #0d6efd;
+    font-family: monospace;
+    font-size: 12px;
+    line-height: 1;
+    text-align: center;
+}
+
+.pl-waveform-proxy::placeholder {
+    color: #6c757d;
+    opacity: 1;
+}
+
+.pl-waveform-proxy:hover {
+    background-color: var(--pl-waveform-interactive-hover);
+}
+
+.pl-waveform-proxy:focus {
+    border-color: #0d6efd;
+    background-color: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
+}
+
+.pl-waveform-proxy.pl-waveform-input-rejected {
+    border-color: #ffc107;
+    background-color: #fff3cd;
+}
+
+.pl-waveform-input-hint {
+    position: absolute;
+    z-index: 30;
+    transform: translate(-50%, -100%);
+    padding: 3px 6px;
+    border-radius: 3px;
+    background-color: #212529;
+    color: #fff;
+    font-size: 11px;
+    line-height: 1.2;
+    white-space: nowrap;
+    pointer-events: none;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.22);
+}
+
+.pl-waveform-question-control.pl-waveform-correct {
+    border-color: #28a745;
+    background-color: rgba(212, 237, 218, 0.92);
+}
+
+.pl-waveform-question-control.pl-waveform-incorrect {
+    border-color: #dc3545;
+    background-color: rgba(248, 215, 218, 0.92);
+}
+
+.pl-waveform-question-control.pl-waveform-control-error {
+    border-color: #ffc107 !important;
+    background-color: #fff3cd !important;
+}
+
+.pl-waveform-question-control.pl-waveform-invalid {
+    border-color: #ffc107 !important;
+    background: #fff3cd !important;
+    background-image: none !important;
+}
+
+.pl-waveform-question-control:disabled {
+    background-color: rgba(233, 236, 239, 0.45);
+    color: #6c757d;
+    cursor: not-allowed;
+}
+
+/* ── Question panel: WaveDrom-backed toggle hit layer ─────────── */
+.pl-waveform-editor-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    pointer-events: none;
+}
+
+/* Editable row band — gives a subtle blue tint to the entire answerable row
+   so students can immediately see which rows need their input. */
+.pl-waveform-editor-row {
+    position: absolute;
+    pointer-events: none;
+    background-color: var(--pl-waveform-editable-row-bg);
+    border-top: 1px dashed rgba(13, 110, 253, 0.22);
+    border-bottom: 1px dashed rgba(13, 110, 253, 0.22);
+    border-radius: 3px;
+}
+
+/* Each clickable cell gets a dashed outline so it reads as an
+   "answer box" even before the student interacts with it. */
+.pl-waveform-cell-hit {
+    position: absolute;
+    z-index: 2;
+    border: 1px dashed var(--pl-waveform-editable-cell-border);
+    padding: 0;
+    margin: 0;
+    background: transparent;
+    color: transparent;
+    cursor: pointer;
+    pointer-events: auto;
+    overflow: visible;
+    border-radius: 4px;
+    transition: background 0.12s ease, box-shadow 0.12s ease;
+}
+
+.pl-waveform-cell-hit:hover {
+    background: var(--pl-waveform-interactive-hover);
+}
+
+.pl-waveform-cell-hit:focus-visible {
+    outline: 2px solid rgba(13, 110, 253, 0.78);
+    outline-offset: -2px;
+    background: var(--pl-waveform-interactive-focus);
+}
+
+.pl-waveform-cell-hit:disabled {
+    cursor: not-allowed;
+}
+
+.pl-waveform-cell-hit.pl-waveform-control-error {
+    box-shadow: inset 0 0 0 2px var(--pl-waveform-interactive-warning-border);
+}
+
+.pl-waveform-cell-hit.pl-waveform-invalid {
+    background-color: var(--pl-waveform-interactive-warning);
+    box-shadow: inset 0 0 0 2px var(--pl-waveform-interactive-warning-border);
+}
+
+.pl-waveform-cell-hit.pl-waveform-correct {
+    background-color: var(--pl-waveform-interactive-correct);
+    box-shadow: inset 0 0 0 1.5px var(--pl-waveform-interactive-correct-border);
+    z-index: 4;
+}
+
+.pl-waveform-cell-hit.pl-waveform-incorrect {
+    background-color: var(--pl-waveform-interactive-incorrect);
+    box-shadow: inset 0 0 0 1.5px var(--pl-waveform-interactive-incorrect-border);
+    z-index: 4;
+}
+
+.pl-waveform-cell-hit.pl-waveform-unanswered {
+    background-color: var(--pl-waveform-interactive-unanswered);
+    box-shadow: inset 0 0 0 1.5px var(--pl-waveform-interactive-unanswered-border);
+    z-index: 4;
+}
+
+.pl-waveform-parse-error {
+    position: absolute;
+    z-index: 20;
+    border-radius: 50%;
+    background-color: #fff3cd;
+    color: #212529;
+    font-size: 9px;
+    font-weight: 700;
+    font-family: monospace;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    pointer-events: auto;
+    cursor: help;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 193, 7, 0.8);
+}
+
+/* ── Question panel: row score pills (feedback="row") ───────── */
+.pl-waveform-row-score-badge {
+    position: absolute;
+    z-index: 15;
+    font-size: 11px;
+    font-family: monospace;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 10px;
+    pointer-events: none;
+    white-space: nowrap;
+    line-height: 1.4;
+}
+
+.pl-waveform-row-score-correct {
+    background-color: rgba(212, 237, 218, 0.94);
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.pl-waveform-row-score-incorrect {
+    background-color: rgba(248, 215, 218, 0.94);
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+/* ── Question panel: table score badge (feedback="table") ───── */
+.pl-waveform-table-score-badge {
+    position: absolute;
+    z-index: 20;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 5px 14px;
+    border-radius: 14px;
+    pointer-events: none;
+    line-height: 1.4;
+    white-space: nowrap;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.pl-waveform-table-score-correct {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.pl-waveform-table-score-incorrect {
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+
+/* ── Question panel: cell score badges (feedback="cell") ─────────────── */
+.pl-waveform-cell-score-badge {
+    position: absolute;
+    z-index: 25;
+    border-radius: 50%;
+    font-size: 9px;
+    font-weight: 700;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    pointer-events: none;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+    width: 14px;
+    height: 14px;
+}
+
+.pl-waveform-cell-score-badge-corner {
+    top: 0;
+    right: 0;
+    transform: translate(20%, -20%);
+}
+
+.pl-waveform-cell-score-correct {
+    background-color: #28a745;
+    color: #fff;
+    border: 1px solid #155724;
+}
+
+.pl-waveform-cell-score-incorrect {
+    background-color: #dc3545;
+    color: #fff;
+    border: 1px solid #721c24;
+}
+
+
+/* ── Feedback table (feedback="cell") ────────────────────────── */
+.pl-waveform-feedback-table {
+    border-collapse: collapse;
+    margin-top: 0.75rem;
+    font-size: 0.875rem;
+}
+
+.pl-waveform-feedback-table th,
+.pl-waveform-feedback-table td {
+    border: 1px solid #dee2e6;
+    padding: 0.35rem 0.6rem;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.pl-waveform-fb-cell {
+    min-width: 55px;
+}
+
+.pl-waveform-fb-cell-correct {
+    background-color: #d4edda;
+}
+
+.pl-waveform-fb-cell-incorrect {
+    background-color: #f8d7da;
+}
+
+.pl-waveform-fb-cell-invalid {
+    background-color: #fff3cd;
+}
+
+.pl-waveform-fb-submitted {
+    font-family: monospace;
+    font-weight: 600;
+}
+
+.pl-waveform-fb-invalid-note {
+    display: block;
+    font-size: 0.72rem;
+    color: #856404;
+    margin-top: 1px;
+}
+
+.pl-waveform-fb-expected {
+    display: block;
+    font-family: monospace;
+    font-size: 0.75rem;
+    color: #6c757d;
+    margin-top: 2px;
+}
+
+.pl-waveform-fb-expected::before {
+    content: "exp: ";
+}
+
+.pl-waveform-fb-icon {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    margin-bottom: 1px;
+    line-height: 1;
+}
+
+.pl-waveform-fb-icon-correct {
+    color: #155724;
+}
+
+.pl-waveform-fb-icon-incorrect {
+    color: #721c24;
+}
+
+.pl-waveform-fb-icon-invalid {
+    color: #856404;
+}
+
+/* ── Shared waveform overlays ─────────────────────────────────── */
+.pl-waveform-feedback-overlay {
+    position: absolute;
+    z-index: 15;
+    pointer-events: none;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.pl-waveform-feedback-correct {
+    background-color: rgba(40, 167, 69, 0.12);
+    border-left: 3px solid #28a745;
+    color: #155724;
+}
+
+.pl-waveform-feedback-incorrect {
+    background-color: rgba(220, 53, 69, 0.12);
+    border-left: 3px solid #dc3545;
+    color: #721c24;
+}
+
+/* ── Row feedback (feedback="row") ───────────────────────────── */
+.pl-waveform-row-feedback {
+    margin-top: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.pl-waveform-row-result {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.875rem;
+}
+
+.pl-waveform-row-result code {
+    font-weight: 600;
+    min-width: 30px;
+}
+
+.pl-waveform-row-correct {
+    background-color: #d4edda;
+    border-left: 3px solid #28a745;
+}
+
+.pl-waveform-row-incorrect {
+    background-color: #f8d7da;
+    border-left: 3px solid #dc3545;
+}
+
+.pl-waveform-row-badge-correct {
+    font-size: 0.8rem;
+    color: #155724;
+}
+
+.pl-waveform-row-badge-incorrect {
+    font-size: 0.8rem;
+    color: #721c24;
+}
+
+/* ── Overall summary bar (feedback="table") ─────────────────── */
+.pl-waveform-summary {
+    margin-top: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    max-width: 340px;
+}
+
+.pl-waveform-summary-text {
+    font-size: 0.875rem;
+    font-weight: 600;
+    white-space: nowrap;
+    color: #495057;
+}
+
+.pl-waveform-summary-bar {
+    flex: 1;
+    min-width: 160px;
+    height: 8px;
+    background-color: #e9ecef;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.pl-waveform-summary-fill {
+    height: 100%;
+    background-color: #28a745;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+/* ── Diff markers (answer panel) ──────────────────────────────── */
+.pl-waveform-diff-marker {
+    position: absolute;
+    z-index: 10;
+    font-size: 10px;
+    font-family: monospace;
+    color: #dc3545;
+    background: rgba(220, 53, 69, 0.1);
+    border: 1px solid rgba(220, 53, 69, 0.3);
+    border-radius: 3px;
+    padding: 1px 4px;
+    pointer-events: auto;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.pl-waveform-diff-marker:hover {
+    background: rgba(220, 53, 69, 0.2);
+}
+
+/* ── Submission section wrapper ───────────────────────────────── */
+.pl-waveform-submission-section {
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    background-color: #fafafa;
+}
+
+.pl-waveform-submission-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.pl-waveform-submission-label {
+    font-weight: 600;
+    color: #212529;
+}
+
+/* ── Answer panel ─────────────────────────────────────────────── */
+.pl-waveform-answer-view {
+    margin-top: 0.5rem;
+}
