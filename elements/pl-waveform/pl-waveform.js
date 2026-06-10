@@ -37,15 +37,19 @@ $(document).ready(function () {
 // Shared helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
+var DEFAULT_ALLOWED_VALUES = ['0', '1', 'x'];
+
+/** Normalize a raw value for comparison. */
 function normalizeRawValue(value) {
     if (value === null || value === undefined) return '';
     return String(value).trim().toLowerCase();
 }
 
+/** Normalize a value against a set of allowed values. */
 function normalizeEditableValue(value, allowedValues) {
     var normalized = normalizeRawValue(value);
     if (normalized === '') return '';
-    var allowed = allowedValues || ['0', '1', 'x'];
+    var allowed = allowedValues || DEFAULT_ALLOWED_VALUES;
     for (var idx = 0; idx < allowed.length; idx += 1) {
         if (normalizeRawValue(allowed[idx]) === normalized) {
             return String(allowed[idx]);
@@ -54,12 +58,13 @@ function normalizeEditableValue(value, allowedValues) {
     return '';
 }
 
+/** Read and normalize the allowed values metadata from a control or row. */
 function getAllowedValues(controlOrRow) {
-    if (!controlOrRow) return ['0', '1', 'x'];
+    if (!controlOrRow) return DEFAULT_ALLOWED_VALUES.slice();
     try {
         var raw = controlOrRow.getAttribute('data-allowed-values');
-        var parsed = JSON.parse(raw || '["0","1","x"]');
-        if (!Array.isArray(parsed) || parsed.length === 0) return ['0', '1', 'x'];
+        var parsed = JSON.parse(raw || JSON.stringify(DEFAULT_ALLOWED_VALUES));
+        if (!Array.isArray(parsed) || parsed.length === 0) return DEFAULT_ALLOWED_VALUES.slice();
         var seen = {};
         return parsed.map(function (value) {
             return String(value).trim();
@@ -70,10 +75,11 @@ function getAllowedValues(controlOrRow) {
             return true;
         });
     } catch (e) {
-        return ['0', '1', 'x'];
+        return DEFAULT_ALLOWED_VALUES.slice();
     }
 }
 
+/** Convert SVG-local coordinates into page coordinates. */
 function toSVGPixels(svg, el, localX, localY) {
     try {
         var pt = svg.createSVGPoint();
@@ -88,6 +94,7 @@ function toSVGPixels(svg, el, localX, localY) {
     }
 }
 
+/** Measure tick and signal positions from the rendered WaveDrom SVG. */
 function measureSVGPositions(container, signalNames) {
     var svg = container.querySelector('svg');
     if (!svg) return null;
@@ -134,12 +141,14 @@ function measureSVGPositions(container, signalNames) {
     return { tickXMap: tickXMap, signalYMap: signalYMap, sortedTicks: sortedTicks, unitWidth: unitWidth };
 }
 
+/** Remove all overlay elements matching a selector from a container. */
 function removeOverlays(container, selector) {
     Array.from(container.querySelectorAll(selector)).forEach(function (el) {
         el.remove();
     });
 }
 
+/** Parse a slot period, falling back to a default when needed. */
 function getSlotPeriod(value, fallbackValue) {
     var parsed = parseFloat(value);
     if (Number.isFinite(parsed) && parsed > 0) {
@@ -152,6 +161,7 @@ function getSlotPeriod(value, fallbackValue) {
     return 1;
 }
 
+/** Compute the center x-position for a slot using measured SVG geometry. */
 function getSlotCenterX(measurements, absIndex, period, fallbackCycleNum) {
     if (!measurements || measurements.sortedTicks.length === 0) return null;
 
@@ -169,6 +179,7 @@ function getSlotCenterX(measurements, absIndex, period, fallbackCycleNum) {
     return tickX + measurements.unitWidth / 2;
 }
 
+/** Return the horizontal bounds spanning the measured tick labels. */
 function getTickSpanBounds(measurements) {
     if (!measurements || !measurements.sortedTicks || measurements.sortedTicks.length === 0) return null;
     var firstTickX = measurements.tickXMap[measurements.sortedTicks[0]];
@@ -179,6 +190,7 @@ function getTickSpanBounds(measurements) {
     };
 }
 
+/** Compute the left and right bounds covered by a row's editable cells. */
 function computeRowBoundsFromCells(cells, firstTickX, unitWidth, fallbackPeriod) {
     if (!Array.isArray(cells) || cells.length === 0 || !Number.isFinite(firstTickX) || !Number.isFinite(unitWidth)) {
         return null;
@@ -207,6 +219,7 @@ function computeRowBoundsFromCells(cells, firstTickX, unitWidth, fallbackPeriod)
     return { left: minLeft, right: maxRight };
 }
 
+/** Clear transient feedback styling from a question container. */
 function clearQuestionFeedbackState(container) {
     removeOverlays(container, '.pl-waveform-cell-score-badge');
 
@@ -219,18 +232,22 @@ function clearQuestionFeedbackState(container) {
     });
 }
 
+/** Return the interactive controls currently rendered in a question. */
 function getQuestionControls(container) {
     return Array.from(container.querySelectorAll('.pl-waveform-question-control'));
 }
 
+/** Return the stable key used to identify a rendered control. */
 function getControlKey(control) {
     return control.getAttribute('data-key') || control.getAttribute('name') || '';
 }
 
+/** Read the input mode from the container metadata. */
 function getInputMode(container) {
     return container.getAttribute('data-input-mode') || 'toggle';
 }
 
+/** Read the list of editable signal names from the container metadata. */
 function getEditableSignals(container) {
     try {
         return JSON.parse(container.getAttribute('data-editable-signals') || '[]');
@@ -239,6 +256,7 @@ function getEditableSignals(container) {
     }
 }
 
+/** Return the per-container map of cells touched by the student. */
 function getTouchedCellMap(container) {
     if (!container._plWaveformTouchedCells) {
         container._plWaveformTouchedCells = {};
@@ -246,16 +264,19 @@ function getTouchedCellMap(container) {
     return container._plWaveformTouchedCells;
 }
 
+/** Mark an editable cell as touched. */
 function markCellTouched(container, key) {
     if (!container || !key) return;
     getTouchedCellMap(container)[key] = true;
 }
 
+/** Check whether an editable cell has been touched. */
 function isCellTouched(container, key) {
     if (!container || !key) return false;
     return !!getTouchedCellMap(container)[key];
 }
 
+/** Sync a rendered hit target's metadata and CSS state. */
 function updateHitTargetMetadata(target, value) {
     var allowedValues = getAllowedValues(target);
     var normalized = normalizeEditableValue(value, allowedValues);
@@ -273,6 +294,7 @@ function updateHitTargetMetadata(target, value) {
     target.classList.toggle('pl-waveform-cell-hit-x', normalized === 'x');
 }
 
+/** Parse JSON from an embedded script tag, falling back on invalid input. */
 function parseJsonScript(container, selector, fallback) {
     var script = container.querySelector(selector);
     if (!script) return fallback;
@@ -284,10 +306,12 @@ function parseJsonScript(container, selector, fallback) {
     }
 }
 
+/** Deep-clone a JSON-compatible value. */
 function cloneJSON(value) {
     return JSON.parse(JSON.stringify(value));
 }
 
+/** Return the cached base WaveDrom model for a container. */
 function getBaseWaveDromModel(container) {
     if (!container._plWaveformBaseModel) {
         container._plWaveformBaseModel = parseJsonScript(container, '.pl-waveform-base-model', null);
@@ -295,6 +319,7 @@ function getBaseWaveDromModel(container) {
     return container._plWaveformBaseModel ? cloneJSON(container._plWaveformBaseModel) : null;
 }
 
+/** Return the cached editable row model list for a container. */
 function getEditableRowModels(container) {
     if (!container._plWaveformEditableRows) {
         container._plWaveformEditableRows = parseJsonScript(container, '.pl-waveform-editable-rows', []);
@@ -302,10 +327,12 @@ function getEditableRowModels(container) {
     return container._plWaveformEditableRows;
 }
 
+/** Return the embedded WaveDrom script for a container. */
 function getWaveDromScript(container) {
     return container.querySelector('script[type="WaveDrom"]');
 }
 
+/** Extract the WaveDrom render index from the embedded script id. */
 function getWaveDromIndex(container) {
     var script = getWaveDromScript(container);
     if (!script || !script.id) return null;
@@ -313,6 +340,7 @@ function getWaveDromIndex(container) {
     return match ? Number(match[1]) : null;
 }
 
+/** Re-render a WaveDrom model into the existing output slot. */
 function rerenderWaveDrom(container, model) {
     var script = getWaveDromScript(container);
     var index = getWaveDromIndex(container);
@@ -322,6 +350,7 @@ function rerenderWaveDrom(container, model) {
     WaveDrom.RenderWaveForm(index, model, 'WaveDrom_Display_');
 }
 
+/** Find a signal entry by name within a WaveDrom model. */
 function findWaveDromSignal(model, signalName) {
     if (!model || !Array.isArray(model.signal)) return null;
     for (var idx = 0; idx < model.signal.length; idx += 1) {
@@ -332,6 +361,7 @@ function findWaveDromSignal(model, signalName) {
     return null;
 }
 
+/** Resolve the current value for a rendered cell or hidden input. */
 function getControlValue(container, cell, allowedValues) {
     var hiddenInput = document.getElementById('pl-wf-hidden-' + cell.key);
     var control = hiddenInput || getQuestionControls(container).find(function (candidate) {
@@ -341,12 +371,13 @@ function getControlValue(container, cell, allowedValues) {
     return normalizeEditableValue(control.value || control.getAttribute('data-value'), allowedValues);
 }
 
+/** Apply editable row values back onto the underlying WaveDrom signal. */
 function applyEditableRowToSignal(container, signalModel, rowModel) {
     if (!signalModel || !rowModel) return;
 
     var waveChars = String(rowModel.wave || '').split('');
     var cellsByAbsIndex = {};
-    var allowedValues = rowModel.allowed_values || ['0', '1', 'x'];
+    var allowedValues = rowModel.allowed_values || DEFAULT_ALLOWED_VALUES;
     rowModel.cells.forEach(function (cell) {
         cellsByAbsIndex[cell.abs_index] = cell;
     });
@@ -418,6 +449,7 @@ function applyEditableRowToSignal(container, signalModel, rowModel) {
     signalModel.wave = waveChars.join('');
 }
 
+/** Recompute the question WaveDrom model after an edit. */
 function updateQuestionWaveDrom(container) {
     if (!container) return;
     var model = getBaseWaveDromModel(container);
@@ -435,6 +467,7 @@ function updateQuestionWaveDrom(container) {
 // Toggle-rendered question editor
 // ═══════════════════════════════════════════════════════════════════════════
 
+/** Wire up toggle-mode keyboard and mouse interactions. */
 function bindQuestionInteractions() {
     $(document).on('click', '.pl-waveform-cell-hit', function () {
         if (this.disabled) return;
@@ -466,6 +499,7 @@ function bindQuestionInteractions() {
     });
 }
 
+/** Wire up hover and focus hints for text-mode inputs. */
 function bindTextInputHints() {
     $(document).on('mouseenter', '.pl-waveform-proxy[data-input-hint]', function () {
         this.dataset.plHintHover = 'true';
@@ -495,6 +529,7 @@ function bindTextInputHints() {
     });
 }
 
+/** Enforce allowed-value input handling for text-mode controls. */
 function bindTextInputValidation() {
     $(document).on('keydown', '.pl-waveform-proxy[data-allowed-values]', function (evt) {
         if (this.disabled || evt.ctrlKey || evt.metaKey || evt.altKey) return;
@@ -545,6 +580,7 @@ function bindTextInputValidation() {
     });
 }
 
+/** Return true when a key should be treated as text-input navigation. */
 function isTextInputControlKey(key) {
     return [
         'Backspace',
@@ -561,12 +597,14 @@ function isTextInputControlKey(key) {
     ].indexOf(key) !== -1;
 }
 
+/** Normalize a text input value or reject it if it is not allowed. */
 function normalizeTextInputValue(input, value) {
     if (normalizeRawValue(value) === '') return '';
     var normalized = normalizeEditableValue(value, getAllowedValues(input));
     return normalized === '' ? null : normalized;
 }
 
+/** Briefly flag a rejected text input value. */
 function rejectTextInputValue(input) {
     input.classList.add('pl-waveform-input-rejected');
     showTimedTextInputHint(input, 1000);
@@ -576,6 +614,7 @@ function rejectTextInputValue(input) {
     }, 700);
 }
 
+/** Show a hint for a limited amount of time. */
 function showTimedTextInputHint(input, delayMs) {
     input.dataset.plHintMode = 'timed';
     showTextInputHint(input);
@@ -586,6 +625,7 @@ function showTimedTextInputHint(input, delayMs) {
     }, delayMs);
 }
 
+/** Render a text-input hint near the focused control. */
 function showTextInputHint(input) {
     var hintText = input.getAttribute('data-input-hint');
     var container = input.closest('.pl-waveform');
@@ -606,11 +646,13 @@ function showTextInputHint(input) {
     input._plWaveformInputHint = hint;
 }
 
+/** Clear the pending text-input hint timer. */
 function clearTextInputHintTimer(input) {
     clearTimeout(input._plWaveformHintTimer);
     input._plWaveformHintTimer = null;
 }
 
+/** Remove any visible hint for a text input. */
 function hideTextInputHint(input) {
     clearTextInputHintTimer(input);
     if (input._plWaveformInputHint) {
@@ -619,6 +661,7 @@ function hideTextInputHint(input) {
     }
 }
 
+/** Build the toggle-mode overlay editor. */
 function buildToggleEditor(container) {
     var editorLayer = container.querySelector('.pl-waveform-editor-layer');
     if (!editorLayer) return;
@@ -642,13 +685,14 @@ function buildToggleEditor(container) {
     });
 }
 
+/** Create a toggle-mode row and its interactive cell buttons. */
 function createToggleRowElement(container, rowModel, firstTickX, unitWidth, rowHeight, sigY) {
     var cellPeriod = rowModel.period || 1;
     var rowWidth = rowModel.wave_length * unitWidth * cellPeriod;
     var rowElement = document.createElement('div');
     rowElement.className = 'pl-waveform-editor-row';
     rowElement.setAttribute('data-signal', rowModel.signal_name);
-    rowElement.setAttribute('data-allowed-values', JSON.stringify(rowModel.allowed_values || ['0', '1', 'x']));
+    rowElement.setAttribute('data-allowed-values', JSON.stringify(rowModel.allowed_values || DEFAULT_ALLOWED_VALUES));
     rowElement.style.left = Math.round(firstTickX) + 'px';
     rowElement.style.top = Math.round(sigY - rowHeight / 2) + 'px';
     rowElement.style.width = Math.round(rowWidth) + 'px';
@@ -665,7 +709,7 @@ function createToggleRowElement(container, rowModel, firstTickX, unitWidth, rowH
         hitTarget.setAttribute('data-cycle', cell.cycle_num);
         hitTarget.setAttribute('data-abs-index', cell.abs_index);
         hitTarget.setAttribute('data-hidden-input-id', 'pl-wf-hidden-' + cell.key);
-        hitTarget.setAttribute('data-allowed-values', JSON.stringify(rowModel.allowed_values || ['0', '1', 'x']));
+        hitTarget.setAttribute('data-allowed-values', JSON.stringify(rowModel.allowed_values || DEFAULT_ALLOWED_VALUES));
         hitTarget.setAttribute('aria-label', cell.aria_label);
         hitTarget.style.left = Math.round(cell.abs_index * unitWidth * cellPeriod) + 'px';
         hitTarget.style.top = '0';
@@ -695,6 +739,7 @@ function createToggleRowElement(container, rowModel, firstTickX, unitWidth, rowH
 // Mirrors the toggle-mode row band logic.  Each editable signal row gets a
 // .pl-waveform-editor-row div that spans its full editable width, giving the
 // same blue-tinted visual cue as toggle mode without any interactive elements.
+/** Build non-interactive background bands for text-mode editing. */
 function buildTextEditorRowBands(container) {
     var editorLayer = container.querySelector('.pl-waveform-editor-layer');
     if (!editorLayer) return;
@@ -728,6 +773,7 @@ function buildTextEditorRowBands(container) {
 
 
 
+/** Advance a toggle cell to the next allowed state. */
 function advanceRenderedCell(control) {
     var container = control.closest('.pl-waveform');
     var key = getControlKey(control);
@@ -741,6 +787,7 @@ function advanceRenderedCell(control) {
 }
 
 
+/** Update a toggle cell and synchronize the hidden input state. */
 function setRenderedCellValue(control, value, options) {
     var opts = options || {};
     var allowedValues = getAllowedValues(control);
@@ -769,6 +816,7 @@ function setRenderedCellValue(control, value, options) {
     }
 }
 
+/** Move focus to the next or previous toggle cell in the row. */
 function focusAdjacentRenderedCell(control, delta) {
     var row = control.closest('.pl-waveform-editor-row');
     if (!row) return;
@@ -788,6 +836,7 @@ function focusAdjacentRenderedCell(control, delta) {
 // Question panel: legacy text input positioning
 // ═══════════════════════════════════════════════════════════════════════════
 
+/** Position text-mode inputs over the matching waveform slots. */
 function positionTextInputs(container) {
     var editableSignals = getEditableSignals(container);
     var m = measureSVGPositions(container, editableSignals);
@@ -832,6 +881,7 @@ function positionTextInputs(container) {
 // Container init
 // ═══════════════════════════════════════════════════════════════════════════
 
+/** Initialize a waveform container for its current panel state. */
 function initContainer(container) {
     var panel = container.getAttribute('data-panel') || '';
     var inputMode = getInputMode(container);
@@ -868,6 +918,7 @@ function initContainer(container) {
 // Shared overlay rendering
 // ═══════════════════════════════════════════════════════════════════════════
 
+/** Append a cell-level overlay marker at the computed waveform position. */
 function appendCellOverlay(container, m, signalName, cycleNum, className, absIndex, period) {
     var sigY = m.signalYMap[signalName];
     var centreX = getSlotCenterX(m, absIndex, period, cycleNum);
@@ -892,6 +943,7 @@ function appendCellOverlay(container, m, signalName, cycleNum, className, absInd
 // Submission panel: feedback overlays
 // ═══════════════════════════════════════════════════════════════════════════
 
+/** Render cell-level feedback overlays for submission mode. */
 function renderFeedbackOverlays(container) {
     var editableSignals = getEditableSignals(container);
     var feedback = [];
@@ -932,6 +984,7 @@ function renderFeedbackOverlays(container) {
 // Submission panel: row-level overlays (feedback="row")
 // ═══════════════════════════════════════════════════════════════════════════
 
+/** Render row-level feedback overlays for submission mode. */
 function renderRowOverlays(container) {
     var editableSignals = getEditableSignals(container);
     var feedback = [];
@@ -981,6 +1034,7 @@ function renderRowOverlays(container) {
 // Answer panel: diff markers
 // ═══════════════════════════════════════════════════════════════════════════
 
+/** Render answer-vs-student diff markers. */
 function renderDiffMarkers(container) {
     var editableSignals = getEditableSignals(container);
     var diffCells = [];
@@ -1015,6 +1069,7 @@ function renderDiffMarkers(container) {
 // Question panel: parse error overlays
 // ═══════════════════════════════════════════════════════════════════════════
 
+/** Render parse-error badges over invalid question controls. */
 function renderParseErrorOverlays(container) {
     var parseErrors = {};
     try {
@@ -1058,6 +1113,7 @@ function renderParseErrorOverlays(container) {
 // Question panel: score badges after submission (per feedback mode)
 // ═══════════════════════════════════════════════════════════════════════════
 
+/** Render score badges for question or submission feedback. */
 function renderQuestionScoreBadges(container) {
     var editableSignals = getEditableSignals(container);
     var feedback = container.getAttribute('data-feedback') || 'cell';

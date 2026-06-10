@@ -1,4 +1,6 @@
 import json
+from typing import Any
+
 import lxml.html
 import chevron
 import prairielearn as pl
@@ -15,23 +17,26 @@ LABEL_DEFAULT = None
 SHOW_SCORE_DEFAULT = True
 VALID_VALUES = {"0", "1", "x"}
 TOGGLE_FIXED_VALUES = {"0", "1"}
+DEFAULT_ALLOWED_VALUES = ["0", "1", "x"]
+DEFAULT_BINARY_ALLOWED_VALUES = ["0", "1"]
 
 
-def _get_signals(element, data):
+def _get_signals(element: Any, data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the normalized signal list from the PrairieLearn params."""
     signals_param = pl.get_string_attrib(element, "signals-param", SIGNALS_PARAM_DEFAULT)
     return _normalize_signals(data["params"].get(signals_param, []))
 
 
-def _editable_signals(signals):
+def _editable_signals(signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [s for s in signals if s.get("editable", False)]
 
 
-def _answer_key(answers_name, sig_name, cycle_num):
-    """Namespaced key: e.g. 'timing_Q_1'."""
+def _answer_key(answers_name: str, sig_name: str, cycle_num: int) -> str:
     return f"{answers_name}_{sig_name}_{cycle_num}"
 
 
-def _normalize_value(val):
+def _normalize_value(val: Any) -> str | None:
+    """Normalize a submitted or authored value for comparison."""
     if val is None:
         return None
     normalized = str(val).strip().lower()
@@ -40,7 +45,8 @@ def _normalize_value(val):
     return normalized
 
 
-def _display_value(val):
+def _display_value(val: Any) -> str | None:
+    """Return the trimmed display form for a value when one exists."""
     if val is None:
         return None
     displayed = str(val).strip()
@@ -49,26 +55,35 @@ def _display_value(val):
     return displayed
 
 
-def _allowed_value_map(allowed_values):
-    return {_normalize_value(value): value for value in allowed_values}
+def _allowed_value_map(allowed_values: list[str]) -> dict[str, str]:
+    return {
+        normalized: value
+        for value in allowed_values
+        if (normalized := _normalize_value(value)) is not None
+    }
 
 
-def _canonical_value(val, allowed_values):
+def _canonical_value(val: Any, allowed_values: list[str]) -> str | None:
     normalized = _normalize_value(val)
     if normalized is None:
         return None
     return _allowed_value_map(allowed_values).get(normalized)
 
 
-def _is_binary_allowed_values(allowed_values):
+def _is_binary_allowed_values(allowed_values: list[str]) -> bool:
     return all(_normalize_value(value) in VALID_VALUES for value in allowed_values)
 
 
-def _uses_bus_rendering(sig):
+def _uses_bus_rendering(sig: dict[str, Any]) -> bool:
     return "data" in sig or not _is_binary_allowed_values(_get_allowed_values(sig))
 
 
-def _normalize_binary_value(val, sig_name, field_name, position=None):
+def _normalize_binary_value(
+    val: Any,
+    sig_name: str,
+    field_name: str,
+    position: int | None = None,
+) -> str:
     normalized = _normalize_value(val)
     if normalized not in VALID_VALUES:
         location = f" at position {position}" if position is not None else ""
@@ -79,7 +94,12 @@ def _normalize_binary_value(val, sig_name, field_name, position=None):
     return normalized
 
 
-def _normalize_binary_list(values, sig_name, field_name, allow_empty=False):
+def _normalize_binary_list(
+    values: Any,
+    sig_name: str,
+    field_name: str,
+    allow_empty: bool = False,
+) -> list[str]:
     if not isinstance(values, list):
         raise Exception(f"pl-waveform: signal '{sig_name}' must define '{field_name}' as a list")
     if not allow_empty and len(values) == 0:
@@ -90,12 +110,8 @@ def _normalize_binary_list(values, sig_name, field_name, allow_empty=False):
     ]
 
 
-def _encode_wave_from_values(values):
-    """Build a WaveDrom wave string from a flat list of values.
-    An 'x' cell always emits 'x' (never '.') so it never silently extends
-    the previous state, and it resets the continuation chain so the next
-    cell also emits its full character.
-    """
+def _encode_wave_from_values(values: list[str]) -> str:
+    """Compress a flat value list into a WaveDrom wave string."""
     if not values:
         return ""
 
@@ -111,11 +127,8 @@ def _encode_wave_from_values(values):
     return "".join(chars)
 
 
-def _build_correct_wave_from_values(initial, values):
-    """Build a WaveDrom wave string for the correct answer.
-    An 'x' value resets the continuation chain so the next cell always
-    emits a full character rather than '.', matching JS behaviour.
-    """
+def _build_correct_wave_from_values(initial: str, values: list[str]) -> str:
+    """Build the canonical answer wave from an initial value and answers."""
     prev = initial if initial != "x" else None
     chars = [initial]
     for val in values:
@@ -127,7 +140,8 @@ def _build_correct_wave_from_values(initial, values):
     return "".join(chars)
 
 
-def _normalize_signal(sig, idx):
+def _normalize_signal(sig: Any, idx: int) -> dict[str, Any]:
+    """Normalize one signal definition while preserving raw WaveDrom fields."""
     if not isinstance(sig, dict):
         raise Exception(f"pl-waveform: signal at index {idx} must be a dictionary")
 
@@ -173,19 +187,20 @@ def _normalize_signal(sig, idx):
     return normalized
 
 
-def _normalize_signals(signals):
+def _normalize_signals(signals: Any) -> Any:
     if not isinstance(signals, list):
         return signals
     return [_normalize_signal(sig, idx) for idx, sig in enumerate(signals)]
 
 
-def _get_allowed_values(sig):
+def _get_allowed_values(sig: dict[str, Any]) -> list[str]:
+    """Return the canonical allowed values list for an editable signal."""
     raw_allowed_values = sig.get("allowed_values")
     if raw_allowed_values is None:
         normalized_answers = [_normalize_value(val) for val in sig.get("correct_answers", [])]
         if any(val == "x" for val in normalized_answers):
-            return ["0", "1", "x"]
-        return ["0", "1"]
+            return DEFAULT_ALLOWED_VALUES.copy()
+        return DEFAULT_BINARY_ALLOWED_VALUES.copy()
 
     if not isinstance(raw_allowed_values, list) or len(raw_allowed_values) == 0:
         raise Exception(
@@ -211,11 +226,11 @@ def _get_allowed_values(sig):
     return allowed_values
 
 
-def _format_allowed_values_hint(allowed_values):
+def _format_allowed_values_hint(allowed_values: list[str]) -> str:
     return f"Type one of: {', '.join(allowed_values)}"
 
 
-def _answer_value(raw, from_json=True):
+def _answer_value(raw: Any, from_json: bool = True) -> str | None:
     if raw is None:
         return None
     value = raw
@@ -224,21 +239,28 @@ def _answer_value(raw, from_json=True):
     return _display_value(value)
 
 
-def _submitted_answer_value(raw):
+def _submitted_answer_value(raw: Any) -> str | None:
     return _normalize_value(_answer_value(raw, from_json=True))
 
 
-def _canonical_answer_value(raw, allowed_values, from_json=True):
+def _canonical_answer_value(
+    raw: Any,
+    allowed_values: list[str],
+    from_json: bool = True,
+) -> str | None:
     return _canonical_value(_answer_value(raw, from_json=from_json), allowed_values)
 
 
-def _is_invalid_submission(raw, allowed_values):
+def _is_invalid_submission(raw: Any, allowed_values: list[str]) -> bool:
     submitted = _submitted_answer_value(raw)
     return submitted is not None and submitted not in _allowed_value_map(allowed_values)
 
 
-def _build_wavedrom(signals, hscale):
-    """Build a WaveDrom JSON string from the signal list."""
+def _invalid_value_message(allowed_values: list[str]) -> str:
+    return f"Invalid value. Expected one of: {', '.join(allowed_values)}."
+
+
+def _build_wavedrom(signals: list[dict[str, Any]], hscale: float) -> str:
     wd_signals = []
     for sig in signals:
         s = {"name": sig["name"]}
@@ -256,7 +278,8 @@ def _build_wavedrom(signals, hscale):
     })
 
 
-def _editable_cells(sig, answers_name):
+def _editable_cells(sig: dict[str, Any], answers_name: str) -> list[dict[str, Any]]:
+    """Return the editable cell metadata for a signal."""
     cells = []
     allowed_values = _get_allowed_values(sig)
     for editable_index, abs_index in enumerate(
@@ -277,11 +300,11 @@ def _editable_cells(sig, answers_name):
     return cells
 
 
-def _build_editable_bus_wave_and_data(wave_chars, cells_by_abs_index, value_by_key):
-    """Build compressed WaveDrom bus wave/data for editable rows.
-    Repeated adjacent answered values continue with '.', transitions emit '=',
-    and unanswered editable cells emit 'x' and reset continuity.
-    """
+def _build_editable_bus_wave_and_data(
+    wave_chars: list[str],
+    cells_by_abs_index: dict[int, dict[str, Any]],
+    value_by_key: dict[str, str | None],
+) -> tuple[str, list[str]]:
     new_chars = []
     data_values = []
     prev_bus_value = None
@@ -310,7 +333,13 @@ def _build_editable_bus_wave_and_data(wave_chars, cells_by_abs_index, value_by_k
     return "".join(new_chars), data_values
 
 
-def _build_value_rendered_signal(sig, answers_name, answer_values, from_json=True):
+def _build_value_rendered_signal(
+    sig: dict[str, Any],
+    answers_name: str,
+    answer_values: dict[str, Any],
+    from_json: bool = True,
+) -> dict[str, Any]:
+    """Render an editable signal using the submitted values."""
     s = dict(sig)
     allowed_values = _get_allowed_values(sig)
     wave_chars = list(sig["wave"])
@@ -339,11 +368,6 @@ def _build_value_rendered_signal(sig, answers_name, answer_values, from_json=Tru
             del s["data"]
         return s
 
-    # prev_val tracks the last non-x, non-dot character so we can collapse
-    # identical adjacent values into '.'.  We MUST reset it to None on 'x'
-    # so that a cell following an 'x' (even if it has the same value as the
-    # cell *before* the 'x') always emits its full character rather than '.'.
-    # Without this, 0→x→0 would produce "0x." (x extended) instead of "0x0".
     prev_val = None
     new_chars = []
     for abs_index, ch in enumerate(wave_chars):
@@ -371,7 +395,7 @@ def _build_value_rendered_signal(sig, answers_name, answer_values, from_json=Tru
     return s
 
 
-def _build_correct_rendered_signal(sig, answers_name):
+def _build_correct_rendered_signal(sig: dict[str, Any], answers_name: str) -> dict[str, Any]:
     if not sig.get("editable"):
         return dict(sig)
 
@@ -400,8 +424,12 @@ def _build_correct_rendered_signal(sig, answers_name):
     return s
 
 
-def _build_submission_signals(signals, data, answers_name, from_json=True):
-    """Build signal list with student's submitted values replacing 'x' placeholders."""
+def _build_submission_signals(
+    signals: list[dict[str, Any]],
+    data: dict[str, Any],
+    answers_name: str,
+    from_json: bool = True,
+) -> list[dict[str, Any]]:
     result = []
     for sig in signals:
         if sig.get("editable"):
@@ -416,7 +444,13 @@ def _build_submission_signals(signals, data, answers_name, from_json=True):
     return result
 
 
-def _build_question_signals(signals, data, answers_name, input_mode, from_json=True):
+def _build_question_signals(
+    signals: list[dict[str, Any]],
+    data: dict[str, Any],
+    answers_name: str,
+    input_mode: str,
+    from_json: bool = True,
+) -> list[dict[str, Any]]:
     result = _build_submission_signals(signals, data, answers_name, from_json=from_json)
     if input_mode != "text":
         return result
@@ -434,18 +468,16 @@ def _build_question_signals(signals, data, answers_name, input_mode, from_json=T
     return result
 
 
-def _build_correct_signals(signals, answers_name):
+def _build_correct_signals(signals: list[dict[str, Any]], answers_name: str) -> list[dict[str, Any]]:
     return [_build_correct_rendered_signal(sig, answers_name) for sig in signals]
 
 
-def _validate_toggle_signal(sig):
+def _validate_toggle_signal(sig: dict[str, Any]) -> None:
     sig_name = sig["name"]
     wave = sig["wave"]
     allowed_values = _get_allowed_values(sig)
 
     if _uses_bus_rendering(sig):
-        # Bus/hex signals in toggle mode: wave must start with '=' (fixed initial bus value)
-        # or 'x' (all editable), followed only by editable 'x' cells.
         if not wave or wave[0] not in {"=", "x"}:
             raise Exception(
                 f"pl-waveform: editable bus signal '{sig_name}' must start with '=' or 'x' in "
@@ -474,7 +506,11 @@ def _validate_toggle_signal(sig):
         )
 
 
-def _build_editable_row_model(sig, answers_name, raw_submitted_answers):
+def _build_editable_row_model(
+    sig: dict[str, Any],
+    answers_name: str,
+    raw_submitted_answers: dict[str, Any],
+) -> dict[str, Any]:
     cells = []
     allowed_values = _get_allowed_values(sig)
 
@@ -507,7 +543,7 @@ def _build_editable_row_model(sig, answers_name, raw_submitted_answers):
     }
 
 
-def _validate_signals(signals, answers_name, input_mode):
+def _validate_signals(signals: Any, answers_name: str, input_mode: str) -> None:
     if not isinstance(signals, list):
         raise Exception("pl-waveform: signals param must be a list of signal dictionaries")
 
@@ -595,7 +631,6 @@ def render(element_html, data):
     answers_name = pl.get_string_attrib(element, "answers-name")
     signals = _get_signals(element, data)
 
-    # hscale: attribute overrides param
     hscale = pl.get_float_attrib(element, "hscale", None)
     if hscale is None:
         hscale = data["params"].get("hscale", HSCALE_DEFAULT)
@@ -679,7 +714,7 @@ def render(element_html, data):
                         "correct": score_data.get("score", 0) >= 1,
                         "incorrect": not is_unanswered and score_data.get("score", 0) < 1,
                         "invalid": is_invalid,
-                        "invalid_message": f"Invalid value. Expected one of: {', '.join(allowed_values)}.",
+                        "invalid_message": _invalid_value_message(allowed_values),
                         "unanswered": is_unanswered,
                     })
 
@@ -748,7 +783,7 @@ def render(element_html, data):
                     "correct": is_correct,
                     "incorrect": is_incorrect,
                     "invalid": is_invalid,
-                    "invalid_message": f"Invalid value. Expected one of: {', '.join(allowed_values)}.",
+                    "invalid_message": _invalid_value_message(allowed_values),
                     "unanswered": is_unanswered,
                 }
                 feedback_cells.append(cell)
