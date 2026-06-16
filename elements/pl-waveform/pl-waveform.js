@@ -1234,7 +1234,7 @@ function renderQuestionScoreBadges(container) {
             pill.textContent = rd.correct + '/' + rd.total + ' correct';
             pill.title = rd.correct + ' of ' + rd.total + ' correct';
             pill.style.left = Math.round(rowBounds.right + 8) + 'px';
-            pill.style.top = Math.round(sigY - 10) + 'px';
+            pill.style.top = Math.round(sigY - 14) + 'px';
             container.appendChild(pill);
         });
         return;

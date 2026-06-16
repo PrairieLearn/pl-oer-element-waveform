@@ -210,25 +210,25 @@
 /* ── Question panel: row score pills (feedback="row") ───────── */
 .pl-waveform-row-score-badge {
     position: absolute;
-    z-index: 15;
-    font-size: 11px;
-    font-family: monospace;
+    z-index: 20;
+    font-size: 13px;
     font-weight: 700;
-    padding: 2px 7px;
-    border-radius: 10px;
+    padding: 5px 14px;
+    border-radius: 14px;
     pointer-events: none;
     white-space: nowrap;
     line-height: 1.4;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
 .pl-waveform-row-score-correct {
-    background-color: rgba(212, 237, 218, 0.94);
+    background-color: #d4edda;
     color: #155724;
     border: 1px solid #c3e6cb;
 }
 
 .pl-waveform-row-score-incorrect {
-    background-color: rgba(248, 215, 218, 0.94);
+    background-color: #f8d7da;
     color: #721c24;
     border: 1px solid #f5c6cb;
 }
