@@ -688,14 +688,17 @@ function buildToggleEditor(container) {
 /** Create a toggle-mode row and its interactive cell buttons. */
 function createToggleRowElement(container, rowModel, firstTickX, unitWidth, rowHeight, sigY) {
     var cellPeriod = rowModel.period || 1;
-    var rowWidth = rowModel.wave_length * unitWidth * cellPeriod;
+    var rowBounds = computeRowBoundsFromCells(rowModel.cells, firstTickX, unitWidth, cellPeriod) || {
+        left: firstTickX,
+        right: firstTickX + (rowModel.wave_length * unitWidth * cellPeriod)
+    };
     var rowElement = document.createElement('div');
     rowElement.className = 'pl-waveform-editor-row';
     rowElement.setAttribute('data-signal', rowModel.signal_name);
     rowElement.setAttribute('data-allowed-values', JSON.stringify(rowModel.allowed_values || DEFAULT_ALLOWED_VALUES));
-    rowElement.style.left = Math.round(firstTickX) + 'px';
+    rowElement.style.left = Math.round(rowBounds.left) + 'px';
     rowElement.style.top = Math.round(sigY - rowHeight / 2) + 'px';
-    rowElement.style.width = Math.round(rowWidth) + 'px';
+    rowElement.style.width = Math.round(rowBounds.right - rowBounds.left) + 'px';
     rowElement.style.height = rowHeight + 'px';
 
     rowModel.cells.forEach(function (cell) {
@@ -711,7 +714,7 @@ function createToggleRowElement(container, rowModel, firstTickX, unitWidth, rowH
         hitTarget.setAttribute('data-hidden-input-id', 'pl-wf-hidden-' + cell.key);
         hitTarget.setAttribute('data-allowed-values', JSON.stringify(rowModel.allowed_values || DEFAULT_ALLOWED_VALUES));
         hitTarget.setAttribute('aria-label', cell.aria_label);
-        hitTarget.style.left = Math.round(cell.abs_index * unitWidth * cellPeriod) + 'px';
+        hitTarget.style.left = Math.round(firstTickX + (cell.abs_index * unitWidth * cellPeriod) - rowBounds.left) + 'px';
         hitTarget.style.top = '0';
         hitTarget.style.width = Math.round(unitWidth * cellPeriod) + 'px';
         hitTarget.style.height = rowHeight + 'px';
@@ -1234,7 +1237,7 @@ function renderQuestionScoreBadges(container) {
             pill.textContent = rd.correct + '/' + rd.total + ' correct';
             pill.title = rd.correct + ' of ' + rd.total + ' correct';
             pill.style.left = Math.round(rowBounds.right + 8) + 'px';
-            pill.style.top = Math.round(sigY - 14) + 'px';
+            pill.style.top = Math.round(sigY - 10) + 'px';
             container.appendChild(pill);
         });
         return;
