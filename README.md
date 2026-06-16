@@ -108,7 +108,7 @@ Common signal fields:
 | `correct_wave` | string | Raw WaveDrom answer waveform for editable raw rows. |
 | `period` | float | WaveDrom period multiplier; `0.5` creates two cells per clock period. |
 | `data` | list | WaveDrom labels for bus rows. |
-| `allowed_values` | list of strings | Allowed student values. Defaults to `["0", "1"]`, or `["0", "1", "x"]` when an answer includes `x`. |
+| `allowed_values` | list of strings | Allowed student values. Defaults to `["0", "1"]`, or `["0", "1", "x"]` when an answer includes `x`. Non-binary lists such as hexadecimal digits are supported. |
 | `editable` | boolean | Whether students answer this row. |
 
 Do not mix raw `wave` authoring with shorthand fields (`values` or `initial`) on
@@ -117,8 +117,8 @@ the same signal.
 ### Input Modes and Feedback
 
 `input-mode="toggle"` lets students click editable cells to cycle through the
-signal's `allowed_values`. This is the default and works well for binary rows
-with a fixed initial value.
+signal's `allowed_values`. This is the default and works for binary rows with a
+fixed initial value, as well as non-binary rows such as hexadecimal bus values.
 
 `input-mode="text"` overlays text boxes on editable cells. Use it when typed
 answers are clearer, such as dense sub-cycle diagrams or custom value sets.
