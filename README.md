@@ -17,6 +17,8 @@ This element renders digital timing diagrams using
 [WaveDrom](https://wavedrom.com/) and allows students to fill in auto-gradable signals by toggling
 values via click or by entering their values.
 
+<img src="images/sampleWaveform.png" width="500">
+
 ### Example
 
 ```html
