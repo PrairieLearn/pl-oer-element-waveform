@@ -71,7 +71,20 @@ def generate(data):
 Signal definitions are stored in `data["params"][signals_param]` as a list of
 dictionaries. Each signal needs a `name` and an `editable` flag.
 
-For most single-bit questions, use the shorthand format:
+For most single-bit questions, use the shorthand format. Editable signals only
+need `correct_answers`; the element creates one editable cell for each answer:
+
+```python
+data["params"]["signals"] = [
+    {"name": "clk", "wave": "lP....", "editable": False},
+    {"name": "D", "values": ["0", "1", "1", "0"], "period": 0.5, "editable": False},
+    {"name": "Q", "correct_answers": ["0", "0", "1", "1"], "editable": True},
+]
+```
+
+If the editable row has a known starting value, add `initial`. The starting
+value is rendered as a fixed first cell, followed by one editable cell per
+`correct_answers` entry:
 
 ```python
 data["params"]["signals"] = [

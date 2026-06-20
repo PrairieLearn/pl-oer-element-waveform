@@ -58,6 +58,15 @@ def test_normalize_editable_shorthand_to_wave_and_correct_wave() -> None:
     assert signals[0]["correct_wave"] == "01.0"
 
 
+def test_normalize_editable_shorthand_without_initial_to_wave_and_correct_wave() -> None:
+    signals = pl_waveform._normalize_signals([  # noqa: SLF001
+        {"name": "Q", "editable": True, "correct_answers": ["0", "0", "1", "1"]}
+    ])
+
+    assert signals[0]["wave"] == "xxxx"
+    assert signals[0]["correct_wave"] == "0.1."
+
+
 def test_prepare_and_grade_keep_answer_key_contract_for_shorthand() -> None:
     element_html = '<pl-waveform answers-name="timing"></pl-waveform>'
     data = {
@@ -84,6 +93,48 @@ def test_prepare_and_grade_keep_answer_key_contract_for_shorthand() -> None:
     }
     assert data["partial_scores"]["timing_Q_1"]["score"] == 1
     assert data["partial_scores"]["timing_Q_2"]["score"] == 0
+
+
+def test_prepare_and_grade_shorthand_without_initial() -> None:
+    element_html = '<pl-waveform answers-name="timing"></pl-waveform>'
+    data = {
+        "params": {
+            "signals": [
+                {"name": "clk", "wave": "lP..", "editable": False},
+                {"name": "Q", "editable": True, "correct_answers": ["0", "0", "1", "1"]},
+            ]
+        },
+        "correct_answers": {},
+        "submitted_answers": {
+            "timing_Q_1": "0",
+            "timing_Q_2": "0",
+            "timing_Q_3": "1",
+            "timing_Q_4": "0",
+        },
+        "partial_scores": {},
+        "format_errors": {},
+        "raw_submitted_answers": {
+            "timing_Q_1": "0",
+            "timing_Q_2": "0",
+            "timing_Q_3": "1",
+            "timing_Q_4": "0",
+        },
+    }
+
+    pl_waveform.prepare(element_html, data)
+    pl_waveform.parse(element_html, data)
+    pl_waveform.grade(element_html, data)
+
+    assert data["correct_answers"] == {
+        "timing_Q_1": "0",
+        "timing_Q_2": "0",
+        "timing_Q_3": "1",
+        "timing_Q_4": "1",
+    }
+    assert data["partial_scores"]["timing_Q_1"]["score"] == 1
+    assert data["partial_scores"]["timing_Q_2"]["score"] == 1
+    assert data["partial_scores"]["timing_Q_3"]["score"] == 1
+    assert data["partial_scores"]["timing_Q_4"]["score"] == 0
 
 
 def test_invalid_cell_submission_still_allows_per_cell_feedback() -> None:

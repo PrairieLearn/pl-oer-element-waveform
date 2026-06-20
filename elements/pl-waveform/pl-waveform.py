@@ -173,15 +173,19 @@ def _normalize_signal(sig: Any, idx: int) -> dict[str, Any]:
         )
         return normalized
 
-    if editable and has_initial:
+    if editable:
         correct_answers = _normalize_binary_list(
             sig.get("correct_answers"), sig_name, "correct_answers", allow_empty=True
         )
-        initial = _normalize_binary_value(sig["initial"], sig_name, "initial")
-        normalized["initial"] = initial
         normalized["correct_answers"] = correct_answers
-        normalized["wave"] = initial + ("x" * len(correct_answers))
-        normalized["correct_wave"] = _build_correct_wave_from_values(initial, correct_answers)
+        if has_initial:
+            initial = _normalize_binary_value(sig["initial"], sig_name, "initial")
+            normalized["initial"] = initial
+            normalized["wave"] = initial + ("x" * len(correct_answers))
+            normalized["correct_wave"] = _build_correct_wave_from_values(initial, correct_answers)
+        else:
+            normalized["wave"] = "x" * len(correct_answers)
+            normalized["correct_wave"] = _encode_wave_from_values(correct_answers)
         return normalized
 
     return normalized
@@ -494,12 +498,15 @@ def _validate_toggle_signal(sig: dict[str, Any]) -> None:
                 f"pl-waveform: editable signal '{sig_name}' has non-binary allowed_values, which are not supported in "
                 "input-mode='toggle'. Use input-mode='text' for this signal."
             )
-        if not wave or wave[0] not in TOGGLE_FIXED_VALUES:
+        has_fixed_initial = bool(wave) and wave[0] in TOGGLE_FIXED_VALUES
+        has_only_editable_cells = bool(wave) and all(ch == "x" for ch in wave)
+        if not has_fixed_initial and not has_only_editable_cells:
             raise Exception(
-                f"pl-waveform: editable signal '{sig_name}' must start with a fixed '0' or '1' in input-mode='toggle'. "
+                f"pl-waveform: editable signal '{sig_name}' must start with a fixed '0' or '1', "
+                "or contain only editable 'x' cells, in input-mode='toggle'. "
                 "Use input-mode='text' for other wave shapes."
             )
-    if any(ch != "x" for ch in wave[1:]):
+    if wave[0] in TOGGLE_FIXED_VALUES and any(ch != "x" for ch in wave[1:]):
         raise Exception(
             f"pl-waveform: editable signal '{sig_name}' must use a fixed initial state followed by editable 'x' cells in input-mode='toggle'. "
             "Use input-mode='text' for other wave shapes."

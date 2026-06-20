@@ -1,0 +1,7 @@
+{
+  "uuid": "6c1a674c-6f45-458e-b4be-756fa42bd59b",
+  "title": "Binary waveform with no initial value",
+  "type": "v3",
+  "topic": "Finite State Machine",
+  "tags": ["waveform", "bug-reproduction"]
+}
