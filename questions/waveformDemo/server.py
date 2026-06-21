@@ -28,6 +28,13 @@ def _encode_bus(values):
     return "".join(wave), data
 
 
+def _encode_repeat_string(values):
+    wave = [values[0]]
+    for idx in range(1, len(values)):
+        wave.append("." if values[idx] == values[idx - 1] else values[idx])
+    return "".join(wave)
+
+
 def generate(data):
     binary_values = ["0", "1"]
 
@@ -141,7 +148,8 @@ def generate(data):
             "name": "Y",
             "prefix": d_tri_values[0],
             "editable": True,
-            "correct_answers": y_tri_answers,
+            "correct_answers": _encode_repeat_string(y_tri_answers),
+            "allowed_values": "01x",
         },
     ]
 
@@ -194,7 +202,7 @@ def generate(data):
         {
             "name": "out",
             "prefix": "01",
-            "correct_answers": ["1", "0", "1"],
+            "correct_answers": "101",
             "suffix": "10",
             "editable": True,
         },
