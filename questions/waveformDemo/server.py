@@ -34,10 +34,10 @@ def generate(data):
     d_values, q_answers = _make_dff(12)
     data["params"]["signals"] = [
         {"name": "clk", "wave": "lP....", "editable": False},
-        {"name": "D", "values": d_values, "period": 0.5, "editable": False},
+        {"name": "D", "wave": d_values, "period": 0.5, "editable": False},
         {
             "name": "Q",
-            "initial": "0",
+            "prefix": "0",
             "editable": True,
             "correct_answers": q_answers,
         },
@@ -66,17 +66,17 @@ def generate(data):
 
     data["params"]["jk_signals"] = [
         {"name": "clk", "wave": "lP......", "editable": False},
-        {"name": "J", "values": j_values, "period": 0.5, "editable": False},
-        {"name": "K", "values": k_values, "period": 0.5, "editable": False},
+        {"name": "J", "wave": j_values, "period": 0.5, "editable": False},
+        {"name": "K", "wave": k_values, "period": 0.5, "editable": False},
         {
             "name": "Q",
-            "initial": "0",
+            "prefix": "0",
             "editable": True,
             "correct_answers": q_values,
         },
         {
             "name": "Q'",
-            "initial": "1",
+            "prefix": "1",
             "editable": True,
             "correct_answers": q_bar_values,
         },
@@ -95,11 +95,11 @@ def generate(data):
 
     data["params"]["enable_signals"] = [
         {"name": "clk", "wave": "lP....", "editable": False},
-        {"name": "D", "values": d_enable_values, "period": 0.5, "editable": False},
-        {"name": "EN", "values": enable_values, "period": 0.5, "editable": False},
+        {"name": "D", "wave": d_enable_values, "period": 0.5, "editable": False},
+        {"name": "EN", "wave": enable_values, "period": 0.5, "editable": False},
         {
             "name": "Q",
-            "initial": "0",
+            "prefix": "0",
             "editable": True,
             "correct_answers": q_enable_answers,
         },
@@ -114,13 +114,12 @@ def generate(data):
 
     data["params"]["and_signals"] = [
         {"name": "clk", "wave": "lP..", "editable": False},
-        {"name": "A", "values": a_values, "period": 0.5, "editable": False},
-        {"name": "B", "values": b_values, "period": 0.5, "editable": False},
+        {"name": "A", "wave": a_values, "period": 0.5, "editable": False},
+        {"name": "B", "wave": b_values, "period": 0.5, "editable": False},
         {
             "name": "Y",
-            "initial": y_values[0],
             "editable": True,
-            "correct_answers": y_values[1:],
+            "correct_answers": y_values,
             "period": 0.5,
         },
     ]
@@ -136,14 +135,13 @@ def generate(data):
 
     data["params"]["tristate_signals"] = [
         {"name": "clk", "wave": "lP....", "editable": False},
-        {"name": "EN", "values": en_tri_values, "period": 0.5, "editable": False},
-        {"name": "D", "values": d_tri_values, "period": 0.5, "editable": False},
+        {"name": "EN", "wave": en_tri_values, "period": 0.5, "editable": False},
+        {"name": "D", "wave": d_tri_values, "period": 0.5, "editable": False},
         {
             "name": "Y",
-            "initial": d_tri_values[0],
+            "prefix": d_tri_values[0],
             "editable": True,
             "correct_answers": y_tri_answers,
-            "allowed_values": ["0", "1", "x"],
         },
     ]
 
@@ -176,19 +174,15 @@ def generate(data):
         },
         {
             "name": "rdataA",
-            "wave": "x" * len(rdata_a_values),
-            "correct_wave": "=" * len(rdata_a_values),
             "correct_answers": rdata_a_values,
-            "allowed_values": HEX_VALUES,
+            "allowed_values": "hex",
             "period": 0.5,
             "editable": True,
         },
         {
             "name": "rdataB",
-            "wave": "x" * len(rdata_b_values),
-            "correct_wave": "=" * len(rdata_b_values),
             "correct_answers": rdata_b_values,
-            "allowed_values": HEX_VALUES,
+            "allowed_values": "hex",
             "period": 0.5,
             "editable": True,
         },
@@ -199,10 +193,9 @@ def generate(data):
         {"name": "in", "wave": "01.0.10", "editable": False},
         {
             "name": "out",
-            "wave": "01xxx10",
-            "correct_wave": "0110110",
+            "prefix": "01",
             "correct_answers": ["1", "0", "1"],
-            "allowed_values": ["0", "1"],
+            "suffix": "10",
             "editable": True,
         },
     ]

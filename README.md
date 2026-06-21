@@ -43,10 +43,10 @@ def generate(data):
 
     data["params"]["signals"] = [
         {"name": "clk", "wave": "lP....", "editable": False},
-        {"name": "D", "values": d_values, "period": 0.5, "editable": False},
+        {"name": "D", "wave": d_values, "period": 0.5, "editable": False},
         {
             "name": "Q",
-            "initial": "0",
+            "prefix": "0",
             "editable": True,
             "correct_answers": q_answers,
         },
@@ -59,7 +59,7 @@ def generate(data):
 |-----------|------|-------------|
 | `answers-name` | string (required) | Unique identifier for the element. Student answer keys are namespaced with this value. |
 | `weight` | integer (default: `1`) | Weight applied to each editable cell during grading. |
-| `hscale` | float (default: `1.5`) | Height of each signal row, represented as a WaveDrom horizontal scale factor. |
+| `hscale` | float (default: `1.5`) | WaveDrom horizontal scale factor. |
 | `signals-param` | string (default: `"signals"`) | Key in `data["params"]` containing the signal data as a list (see below). |
 | `feedback` | string (default: `"cell"`) | Granularity for feedback given to students: `"cell"`, `"row"`, or `"table"`. |
 | `input-mode` | string (default: `"toggle"`) | Input mechanism used for student submissions: `"toggle"` or `"text"`. |
@@ -109,12 +109,12 @@ The `allowed_values` key enables student inputs beyond binary signals. By defaul
 
 ```python
 data["params"]["signals"] = [
-    {"name": "hex", "correct_answers": "2102", "allowed_values": "01234" "editable": True},
-    {"name": "hex", "correct_answers": "ABC123", "allowed_values": "hex" "editable": True},
+    {"name": "ternary", "correct_answers": "2102", "allowed_values": "012", "editable": True},
+    {"name": "hex", "correct_answers": "ABC123", "allowed_values": "hex", "editable": True},
 ]
 ```
 
-Note that pre-rendered signals support hexadecimal values, but no custom `allowed_values` are not supported in pre-rendered signals as this conflicts with WaveDrom's special syntax (see below). To encode these values, we recommend using the bus syntax.
+Note that pre-rendered signals support hexadecimal values, but custom `allowed_values` are not supported in pre-rendered signals as this conflicts with WaveDrom's special syntax (see below). To encode these values, we recommend using the bus syntax.
 
 
 ### Input Modes and Feedback
@@ -148,7 +148,7 @@ For bus values, provide an additional `data` key that contains a list of strings
 
 ```python
 data["params"]["signals"] = [
-    {"name": "bus", "wave": "=.=", "data": ["first", "second"] "editable": False},
+    {"name": "bus", "wave": "=.=", "data": ["first", "second"], "editable": False},
 ]
 ```
 

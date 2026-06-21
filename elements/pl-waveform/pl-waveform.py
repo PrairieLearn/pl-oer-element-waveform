@@ -16,9 +16,9 @@ INPUT_MODE_OPTIONS = {"toggle", "text"}
 LABEL_DEFAULT = None
 SHOW_SCORE_DEFAULT = True
 VALID_VALUES = {"0", "1", "x"}
-TOGGLE_FIXED_VALUES = {"0", "1"}
 DEFAULT_ALLOWED_VALUES = ["0", "1", "x"]
 DEFAULT_BINARY_ALLOWED_VALUES = ["0", "1"]
+HEX_ALLOWED_VALUES = list("0123456789ABCDEF")
 
 
 def _get_signals(element: Any, data: dict[str, Any]) -> list[dict[str, Any]]:
@@ -78,36 +78,60 @@ def _uses_bus_rendering(sig: dict[str, Any]) -> bool:
     return "data" in sig or not _is_binary_allowed_values(_get_allowed_values(sig))
 
 
-def _normalize_binary_value(
-    val: Any,
-    sig_name: str,
-    field_name: str,
-    position: int | None = None,
-) -> str:
-    normalized = _normalize_value(val)
-    if normalized not in VALID_VALUES:
-        location = f" at position {position}" if position is not None else ""
-        raise Exception(
-            f"pl-waveform: signal '{sig_name}' has invalid {field_name} value '{val}'{location}; "
-            f"expected one of {sorted(VALID_VALUES)}"
-        )
-    return normalized
-
-
-def _normalize_binary_list(
+def _normalize_values(
     values: Any,
     sig_name: str,
     field_name: str,
+    *,
+    expand_dots: bool,
     allow_empty: bool = False,
 ) -> list[str]:
-    if not isinstance(values, list):
-        raise Exception(f"pl-waveform: signal '{sig_name}' must define '{field_name}' as a list")
-    if not allow_empty and len(values) == 0:
-        raise Exception(f"pl-waveform: signal '{sig_name}' must define '{field_name}' as a non-empty list")
-    return [
-        _normalize_binary_value(val, sig_name, field_name, position=idx)
-        for idx, val in enumerate(values, start=1)
-    ]
+    if isinstance(values, str):
+        source_values = list(values)
+    elif isinstance(values, list):
+        source_values = values
+    else:
+        raise Exception(
+            f"pl-waveform: signal '{sig_name}' must define '{field_name}' as a string or list"
+        )
+
+    if not allow_empty and len(source_values) == 0:
+        raise Exception(f"pl-waveform: signal '{sig_name}' must define '{field_name}' as non-empty")
+
+    normalized_values = []
+    previous = None
+    for idx, value in enumerate(source_values, start=1):
+        displayed = _display_value(value)
+        if displayed is None:
+            raise Exception(
+                f"pl-waveform: signal '{sig_name}' has blank {field_name} value at position {idx}"
+            )
+        if expand_dots and displayed == ".":
+            if previous is None:
+                raise Exception(
+                    f"pl-waveform: signal '{sig_name}' has invalid {field_name} repeat at position {idx}"
+                )
+            displayed = previous
+        normalized_values.append(displayed)
+        previous = displayed
+
+    return normalized_values
+
+
+def _encode_bus_from_values(values: list[str]) -> tuple[str, list[str]]:
+    wave = []
+    data = []
+    previous = None
+
+    for value in values:
+        if value == previous:
+            wave.append(".")
+        else:
+            wave.append("=")
+            data.append(value)
+            previous = value
+
+    return "".join(wave), data
 
 
 def _encode_wave_from_values(values: list[str]) -> str:
@@ -127,63 +151,115 @@ def _encode_wave_from_values(values: list[str]) -> str:
     return "".join(chars)
 
 
-def _build_correct_wave_from_values(initial: str, values: list[str]) -> str:
-    """Build the canonical answer wave from an initial value and answers."""
-    prev = initial if initial != "x" else None
-    chars = [initial]
-    for val in values:
-        if val != "x" and val == prev:
-            chars.append(".")
+def _normalize_reference_wave(sig: dict[str, Any], sig_name: str) -> dict[str, Any]:
+    normalized = dict(sig)
+    raw_wave = sig.get("wave")
+
+    if isinstance(raw_wave, list):
+        values = _normalize_values(raw_wave, sig_name, "wave", expand_dots=False)
+        if all(_normalize_value(value) in VALID_VALUES for value in values):
+            normalized["wave"] = _encode_wave_from_values([
+                _normalize_value(value) or value for value in values
+            ])
         else:
-            chars.append(val)
-            prev = val if val != "x" else None
+            wave, data_values = _encode_bus_from_values(values)
+            normalized["wave"] = wave
+            normalized["data"] = data_values
+    elif isinstance(raw_wave, str):
+        normalized["wave"] = raw_wave
+    else:
+        raise Exception(f"pl-waveform: signal '{sig_name}' must define 'wave' as a string or list")
+
+    return normalized
+
+
+def _build_placeholder_wave(prefix: str, answer_count: int, suffix: str) -> str:
+    return prefix + ("x" * answer_count) + suffix
+
+
+def _build_binary_correct_wave(
+    wave: str,
+    correct_answers: list[str],
+    allowed_values: list[str],
+) -> str:
+    chars = []
+    answer_idx = 0
+    prev = None
+
+    for ch in wave:
+        if ch == "x" and answer_idx < len(correct_answers):
+            val = _canonical_value(correct_answers[answer_idx], allowed_values)
+            if val is None:
+                val = _display_value(correct_answers[answer_idx]) or "x"
+            answer_idx += 1
+
+            if val != "x" and val == prev:
+                chars.append(".")
+            else:
+                chars.append(val)
+                prev = val if val != "x" else None
+            continue
+
+        chars.append(ch)
+        normalized = _normalize_value(ch)
+        if normalized in {"0", "1"}:
+            prev = normalized
+        elif ch != ".":
+            prev = None
+
     return "".join(chars)
 
 
 def _normalize_signal(sig: Any, idx: int) -> dict[str, Any]:
-    """Normalize one signal definition while preserving raw WaveDrom fields."""
+    """Normalize one signal definition while preserving WaveDrom fields."""
     if not isinstance(sig, dict):
         raise Exception(f"pl-waveform: signal at index {idx} must be a dictionary")
 
     sig_name = sig.get("name", f"signal[{idx}]")
     editable = bool(sig.get("editable", False))
-    has_wave = "wave" in sig
-    has_values = "values" in sig
-    has_initial = "initial" in sig
 
-    if has_wave and (has_values or has_initial):
-        raise Exception(
-            f"pl-waveform: signal '{sig_name}' mixes raw WaveDrom fields with shorthand authoring fields; "
-            "use either 'wave' or the shorthand API, but not both"
-        )
+    if not editable:
+        return _normalize_reference_wave(sig, sig_name)
 
     normalized = dict(sig)
+    if "correct_answers" not in normalized:
+        raise Exception(f"pl-waveform: editable signal '{sig_name}' must define 'correct_answers'")
 
-    if has_wave:
-        return normalized
+    correct_answers = _normalize_values(
+        normalized["correct_answers"],
+        sig_name,
+        "correct_answers",
+        expand_dots=True,
+    )
+    normalized["correct_answers"] = correct_answers
 
-    if has_values:
-        if editable:
+    prefix = normalized.get("prefix", "")
+    suffix = normalized.get("suffix", "")
+    if not isinstance(prefix, str) or not isinstance(suffix, str):
+        raise Exception(f"pl-waveform: editable signal '{sig_name}' prefix/suffix must be strings")
+
+    if "wave" in normalized:
+        if not isinstance(normalized["wave"], str):
+            raise Exception(f"pl-waveform: editable signal '{sig_name}' must define 'wave' as a string")
+    else:
+        normalized["wave"] = _build_placeholder_wave(prefix, len(correct_answers), suffix)
+
+    allowed_values = _get_allowed_values(normalized)
+    for answer_idx, value in enumerate(correct_answers, start=1):
+        if _canonical_value(value, allowed_values) is None:
             raise Exception(
-                f"pl-waveform: editable signal '{sig_name}' cannot use 'values' shorthand; "
-                "use 'initial' + 'correct_answers' or provide raw 'wave'/'correct_wave'"
+                f"pl-waveform: editable signal '{sig_name}' has correct_answers value '{value}' "
+                f"at cycle {answer_idx} that is not in allowed_values {allowed_values}"
             )
-        normalized["wave"] = _encode_wave_from_values(
-            _normalize_binary_list(sig["values"], sig_name, "values")
-        )
-        return normalized
 
-    if editable and has_initial:
-        correct_answers = _normalize_binary_list(
-            sig.get("correct_answers"), sig_name, "correct_answers", allow_empty=True
+    if _is_binary_allowed_values(allowed_values):
+        normalized["correct_wave"] = _build_binary_correct_wave(
+            normalized["wave"],
+            correct_answers,
+            allowed_values,
         )
-        initial = _normalize_binary_value(sig["initial"], sig_name, "initial")
-        normalized["initial"] = initial
-        normalized["correct_answers"] = correct_answers
-        normalized["wave"] = initial + ("x" * len(correct_answers))
-        normalized["correct_wave"] = _build_correct_wave_from_values(initial, correct_answers)
-        return normalized
-
+    else:
+        normalized["correct_wave"] = normalized.get("correct_wave", "=" * len(correct_answers))
     return normalized
 
 
@@ -202,9 +278,15 @@ def _get_allowed_values(sig: dict[str, Any]) -> list[str]:
             return DEFAULT_ALLOWED_VALUES.copy()
         return DEFAULT_BINARY_ALLOWED_VALUES.copy()
 
+    if isinstance(raw_allowed_values, str):
+        if raw_allowed_values.strip().lower() == "hex":
+            raw_allowed_values = HEX_ALLOWED_VALUES
+        else:
+            raw_allowed_values = list(raw_allowed_values.strip())
+
     if not isinstance(raw_allowed_values, list) or len(raw_allowed_values) == 0:
         raise Exception(
-            f"pl-waveform: editable signal '{sig['name']}' must define 'allowed_values' as a non-empty list"
+            f"pl-waveform: editable signal '{sig['name']}' must define 'allowed_values' as a non-empty string or list"
         )
 
     allowed_values = []
@@ -473,37 +555,11 @@ def _build_correct_signals(signals: list[dict[str, Any]], answers_name: str) -> 
 
 
 def _validate_toggle_signal(sig: dict[str, Any]) -> None:
-    sig_name = sig["name"]
-    wave = sig["wave"]
-    allowed_values = _get_allowed_values(sig)
+    _get_allowed_values(sig)
 
-    if _uses_bus_rendering(sig):
-        if not wave or wave[0] not in {"=", "x"}:
-            raise Exception(
-                f"pl-waveform: editable bus signal '{sig_name}' must start with '=' or 'x' in "
-                "input-mode='toggle'. Use input-mode='text' for other wave shapes."
-            )
-    else:
-        if "data" in sig:
-            raise Exception(
-                f"pl-waveform: editable signal '{sig_name}' uses bus 'data', which is not supported in input-mode='toggle'. "
-                "Use input-mode='text' for this signal."
-            )
-        if not _is_binary_allowed_values(allowed_values):
-            raise Exception(
-                f"pl-waveform: editable signal '{sig_name}' has non-binary allowed_values, which are not supported in "
-                "input-mode='toggle'. Use input-mode='text' for this signal."
-            )
-        if not wave or wave[0] not in TOGGLE_FIXED_VALUES:
-            raise Exception(
-                f"pl-waveform: editable signal '{sig_name}' must start with a fixed '0' or '1' in input-mode='toggle'. "
-                "Use input-mode='text' for other wave shapes."
-            )
-    if any(ch != "x" for ch in wave[1:]):
-        raise Exception(
-            f"pl-waveform: editable signal '{sig_name}' must use a fixed initial state followed by editable 'x' cells in input-mode='toggle'. "
-            "Use input-mode='text' for other wave shapes."
-        )
+
+def _signal_duration(sig: dict[str, Any]) -> float:
+    return len(sig["wave"]) * float(sig.get("period", 1))
 
 
 def _build_editable_row_model(
@@ -548,6 +604,7 @@ def _validate_signals(signals: Any, answers_name: str, input_mode: str) -> None:
         raise Exception("pl-waveform: signals param must be a list of signal dictionaries")
 
     seen_names = set()
+    expected_duration = None
     for idx, sig in enumerate(signals):
         sig_name = sig.get("name")
         wave = sig.get("wave")
@@ -559,6 +616,17 @@ def _validate_signals(signals: Any, answers_name: str, input_mode: str) -> None:
 
         if not isinstance(wave, str):
             raise Exception(f"pl-waveform: signal '{sig_name}' must have a string 'wave'")
+        if len(wave) == 0:
+            raise Exception(f"pl-waveform: signal '{sig_name}' must define a non-empty 'wave'")
+
+        duration = _signal_duration(sig)
+        if expected_duration is None:
+            expected_duration = duration
+        elif abs(duration - expected_duration) > 1e-9:
+            raise Exception(
+                f"pl-waveform: signal '{sig_name}' has duration {duration:g}, "
+                f"but expected {expected_duration:g}; adjust wave length or period"
+            )
 
         if not sig.get("editable", False):
             continue

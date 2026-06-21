@@ -41,30 +41,40 @@ sys.modules.setdefault("prairielearn", pl_stub)
 pl_waveform = importlib.import_module("pl-waveform")
 
 
-def test_normalize_noneditable_shorthand_values_to_wave() -> None:
+def test_normalize_noneditable_wave_list_to_wave() -> None:
     signals = pl_waveform._normalize_signals([  # noqa: SLF001
-        {"name": "D", "values": ["0", "1", "1", "0"], "editable": False}
+        {"name": "D", "wave": ["0", "1", "1", "0"], "editable": False}
     ])
 
     assert signals[0]["wave"] == "01.0"
 
 
-def test_normalize_editable_shorthand_to_wave_and_correct_wave() -> None:
+def test_normalize_editable_prefix_to_wave_and_correct_wave() -> None:
     signals = pl_waveform._normalize_signals([  # noqa: SLF001
-        {"name": "Q", "initial": "0", "editable": True, "correct_answers": ["1", "1", "0"]}
+        {"name": "Q", "prefix": "0", "editable": True, "correct_answers": ["1", "1", "0"]}
     ])
 
     assert signals[0]["wave"] == "0xxx"
     assert signals[0]["correct_wave"] == "01.0"
 
 
-def test_prepare_and_grade_keep_answer_key_contract_for_shorthand() -> None:
+def test_normalize_editable_string_answers_expand_dot_repeats() -> None:
+    signals = pl_waveform._normalize_signals([  # noqa: SLF001
+        {"name": "Q", "editable": True, "correct_answers": "0.1.", "suffix": "0"}
+    ])
+
+    assert signals[0]["correct_answers"] == ["0", "0", "1", "1"]
+    assert signals[0]["wave"] == "xxxx0"
+    assert signals[0]["correct_wave"] == "0.1.0"
+
+
+def test_prepare_and_grade_keep_answer_key_contract_for_documented_api() -> None:
     element_html = '<pl-waveform answers-name="timing"></pl-waveform>'
     data = {
         "params": {
             "signals": [
                 {"name": "clk", "wave": "lP.", "editable": False},
-                {"name": "Q", "initial": "0", "editable": True, "correct_answers": ["1", "0"]},
+                {"name": "Q", "prefix": "0", "editable": True, "correct_answers": ["1", "0"]},
             ]
         },
         "correct_answers": {},
@@ -94,7 +104,7 @@ def test_invalid_cell_submission_still_allows_per_cell_feedback() -> None:
                 {"name": "clk", "wave": "lP..", "editable": False},
                 {
                     "name": "Q",
-                    "initial": "0",
+                    "prefix": "0",
                     "editable": True,
                     "correct_answers": ["1", "0", "0"],
                 },
@@ -171,7 +181,7 @@ def test_blank_toggle_cell_only_zeros_that_cell() -> None:
                 {"name": "clk", "wave": "lP..", "editable": False},
                 {
                     "name": "Q",
-                    "initial": "0",
+                    "prefix": "0",
                     "editable": True,
                     "correct_answers": ["1", "0", "1"],
                 },
@@ -280,8 +290,7 @@ def test_render_text_mode_includes_allowed_value_hint() -> None:
                 {"name": "clk", "wave": "lP.", "editable": False},
                 {
                     "name": "Y",
-                    "wave": "0xx",
-                    "correct_wave": "01x",
+                    "prefix": "0",
                     "editable": True,
                     "correct_answers": ["1", "x"],
                     "allowed_values": ["0", "1", "x"],
@@ -316,11 +325,9 @@ def test_hex_allowed_values_grade_case_insensitively_and_display_canonical() -> 
                 {"name": "clk", "wave": "lP", "editable": False},
                 {
                     "name": "rdata",
-                    "wave": "xx",
-                    "correct_wave": "==",
                     "editable": True,
                     "correct_answers": ["A", "F"],
-                    "allowed_values": hex_values,
+                    "allowed_values": "hex",
                 },
             ]
         },
@@ -370,11 +377,9 @@ def test_render_question_hides_live_hex_bus_labels_but_keeps_bus_metadata() -> N
                 {"name": "clk", "wave": "lP", "editable": False},
                 {
                     "name": "rdata",
-                    "wave": "xx",
-                    "correct_wave": "==",
                     "editable": True,
                     "correct_answers": ["A", "F"],
-                    "allowed_values": hex_values,
+                    "allowed_values": "hex",
                 },
             ]
         },
@@ -403,8 +408,8 @@ def test_render_question_hides_live_hex_bus_labels_but_keeps_bus_metadata() -> N
     assert [cell["abs_index"] for cell in row_model["cells"]] == [0, 1]
 
 
-def test_invalid_shorthand_value_raises() -> None:
-    with pytest.raises(Exception, match="invalid values value"):
+def test_invalid_answer_value_raises() -> None:
+    with pytest.raises(Exception, match="not in allowed_values"):
         pl_waveform._normalize_signals([  # noqa: SLF001
-            {"name": "D", "values": ["0", "2"], "editable": False}
+            {"name": "D", "correct_answers": ["0", "2"], "editable": True}
         ])
