@@ -70,9 +70,6 @@ def generate(data):
 
 Signal definitions are stored in `data["params"]` in the key that matches the `signals-param` attribute (see above). Each signal row is a dictionary with at minimum a unique `name` and an `"editable"` key. Signals with `"editable"` set to `True` are filled in by students, those with it set to `False` are pre-rendered rows. The remaining keys are different for editable and non-editable rows.
 
-<<<<<<< Updated upstream
-For most single-bit questions, use the shorthand format:
-=======
 #### Editable Signals
 
 Editable signals require a `"correct_answers"` key that is used for auto-grading and generating the sample solution in the answer panel. Correct answers can be provided as an array of integers or strings (the latter also supports `"x"`), or as a WaveDrom string (with `"."` optionally representing a repeat of the previous signal).
@@ -86,7 +83,6 @@ data["params"]["signals"] = [
 ```
 
 Editable signals can be assigned a `prefix` and/or a `suffix` that are pre-rendered and not editable. Note that the size of each row (length of `prefix` + `correct_answers` + `suffix`) must match.
->>>>>>> Stashed changes
 
 ```python
 data["params"]["signals"] = [
