@@ -429,6 +429,7 @@ def _build_editable_bus_wave_and_data(
     cells_by_abs_index: dict[int, dict[str, Any]],
     value_by_key: dict[str, str | None],
 ) -> tuple[str, list[str]]:
+    """Build a bus-rendered wave from editable cell values."""
     new_chars = []
     data_values = []
     prev_bus_value = None
@@ -522,6 +523,7 @@ def _build_value_rendered_signal(
 def _build_correct_rendered_signal(
     sig: dict[str, Any], answers_name: str
 ) -> dict[str, Any]:
+    """Build the answer-panel rendering for a signal."""
     if not sig.get("editable"):
         return dict(sig)
 
@@ -556,6 +558,7 @@ def _build_submission_signals(
     answers_name: str,
     from_json: bool = True,
 ) -> list[dict[str, Any]]:
+    """Build the submission-panel rendering for all signals."""
     return [
         (
             _build_value_rendered_signal(
@@ -578,6 +581,7 @@ def _build_question_signals(
     input_mode: str,
     from_json: bool = True,
 ) -> list[dict[str, Any]]:
+    """Build the question-panel rendering for all signals."""
     result = _build_submission_signals(signals, data, answers_name, from_json=from_json)
     if input_mode != "text":
         return result
@@ -599,6 +603,7 @@ def _build_question_signals(
 def _build_correct_signals(
     signals: list[dict[str, Any]], answers_name: str
 ) -> list[dict[str, Any]]:
+    """Build the answer-panel rendering for all signals."""
     return [_build_correct_rendered_signal(sig, answers_name) for sig in signals]
 
 
@@ -607,6 +612,7 @@ def _build_editable_row_model(
     answers_name: str,
     raw_submitted_answers: dict[str, Any],
 ) -> dict[str, Any]:
+    """Build client-side metadata for one editable signal row."""
     cells = []
     allowed_values = _get_allowed_values(sig)
 
@@ -644,6 +650,7 @@ def _build_editable_row_model(
 
 
 def _validate_signals(signals: Any, answers_name: str) -> None:
+    """Validate normalized signal rows before rendering or grading."""
     if not isinstance(signals, list):
         raise Exception(
             "pl-waveform: signals param must be a list of signal dictionaries"
@@ -762,6 +769,7 @@ def _question_cell_model(
     is_editable: bool,
     input_mode: str,
 ) -> dict[str, Any]:
+    """Build mustache metadata for one question-panel input cell."""
     allowed_values = _get_allowed_values(sig)
     raw = raw_submitted_answers.get(cell["key"], "")
     canonical_raw = _canonical_answer_value(raw, allowed_values, from_json=False)
@@ -791,6 +799,7 @@ def _question_editable_rows(
     data: dict[str, Any],
     input_mode: str,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int]:
+    """Build question-panel metadata for all editable rows."""
     editable_rows = []
     editable_row_models = []
     max_cycles = 0
@@ -823,6 +832,7 @@ def _question_parse_errors(
     answers_name: str,
     data: dict[str, Any],
 ) -> dict[str, Any]:
+    """Collect format errors for editable cells in question-panel rendering."""
     format_errors = data.get("format_errors", {})
     return {
         cell["key"]: format_errors[cell["key"]]
@@ -837,6 +847,7 @@ def _question_cell_scores(
     answers_name: str,
     data: dict[str, Any],
 ) -> list[dict[str, Any]]:
+    """Build score overlay metadata for question-panel rendering."""
     cell_scores = []
     for sig in _editable_signals(signals):
         allowed_values = _get_allowed_values(sig)
@@ -870,6 +881,7 @@ def _question_render_params(
     answers_name: str,
     hscale: float,
 ) -> dict[str, Any]:
+    """Build mustache parameters for the question panel."""
     feedback = pl.get_string_attrib(element, "feedback", FEEDBACK_DEFAULT)
     input_mode = pl.get_string_attrib(element, "input-mode", INPUT_MODE_DEFAULT)
     show_score = pl.get_boolean_attrib(element, "show-score", SHOW_SCORE_DEFAULT)
@@ -916,6 +928,7 @@ def _submission_cell_result(
     cell: dict[str, Any],
     data: dict[str, Any],
 ) -> dict[str, Any]:
+    """Build feedback metadata for one submitted cell."""
     allowed_values = _get_allowed_values(sig)
     score = data["partial_scores"].get(cell["key"], {}).get("score", None)
     submitted_raw = data["submitted_answers"].get(cell["key"], None)
@@ -947,6 +960,7 @@ def _submission_results(
     answers_name: str,
     data: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int, int, int]:
+    """Build feedback rows and score totals for the submission panel."""
     feedback_cells = []
     result_rows = []
     total_cells = 0
@@ -982,6 +996,7 @@ def _submission_render_params(
     answers_name: str,
     hscale: float,
 ) -> dict[str, Any]:
+    """Build mustache parameters for the submission panel."""
     feedback = pl.get_string_attrib(element, "feedback", FEEDBACK_DEFAULT)
     label = pl.get_string_attrib(element, "label", LABEL_DEFAULT)
     feedback_cells, result_rows, correct_count, total_cells, max_cycles = (
@@ -1024,6 +1039,7 @@ def _answer_diff_cells(
     answers_name: str,
     data: dict[str, Any],
 ) -> list[dict[str, Any]]:
+    """Build answer-panel diff metadata for submitted values."""
     diff_cells = []
     for sig in _editable_signals(signals):
         for cell in _editable_cells(sig, answers_name):
