@@ -216,5 +216,24 @@ def generate(data):
         },
     ]
 
+    formatted_input_values = random.choices(binary_values, k=4)
+    formatted_output_values = ["1" if value == "0" else "0" for value in formatted_input_values]
+    data["params"]["formatted_name_signals"] = [
+        {"name": "clk", "editable": False, "wave": "lP.."},
+        {"name": "input", "editable": False, "values": formatted_input_values},
+        {
+            "name": [
+                "tspan",
+                ["tspan", {"fill": "#0d6efd", "font-weight": "bold"}, "DATA"],
+                " ",
+                ["tspan", {"fill": "#dc3545", "baseline-shift": "sub"}, "out"],
+                " ",
+                ["tspan", {"fill": "#198754", "font-style": "italic"}, "inv"],
+            ],
+            "editable": True,
+            "values": formatted_output_values,
+        },
+    ]
+
     data["params"]["hscale"] = 1.5
     return data

@@ -19,6 +19,105 @@ HEX_ALLOWED_VALUES = list("0123456789ABCDEF")
 BUS_WAVE_CHARS = set("=23456789")
 
 
+def _name_text(value: Any) -> str:
+    """Return the visible text represented by a WaveDrom name value."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, dict):
+        return ""
+    if isinstance(value, list):
+        children = value
+        if value and isinstance(value[0], str):
+            children = value[1:]
+        if children and isinstance(children[0], dict):
+            children = children[1:]
+        return "".join(_name_text(child) for child in children)
+    return ""
+
+
+def _name_markup(value: Any) -> str:
+    """Convert a WaveDrom-style name value into signal-name markup."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, dict):
+        return ""
+    if not isinstance(value, list):
+        return ""
+
+    children = value
+    attrs = None
+    if value and value[0] == "tspan":
+        children = value[1:]
+    if children and isinstance(children[0], dict):
+        attrs = children[0]
+        children = children[1:]
+
+    body = "".join(_name_markup(child) for child in children)
+    tags = _name_markup_tags(attrs)
+    return "".join(f"<{tag}>" for tag in tags) + body + "".join(
+        f"</{tag}>" for tag in reversed(tags)
+    )
+
+
+def _name_markup_tags(attrs: dict[str, Any] | None) -> list[str]:
+    """Return WaveDrom inline tags represented by tspan attributes."""
+    if not isinstance(attrs, dict):
+        return []
+
+    tags = []
+    if str(attrs.get("font-weight", "")).lower() == "bold":
+        tags.append("b")
+    if str(attrs.get("font-style", "")).lower() == "italic":
+        tags.append("i")
+    if "monospace" in str(attrs.get("font-family", "")).lower():
+        tags.append("tt")
+
+    baseline = str(attrs.get("baseline-shift", "")).lower()
+    dy = str(attrs.get("dy", "")).strip()
+    if baseline == "sub" or (dy and not dy.startswith("-") and dy != "0"):
+        tags.append("sub")
+    elif baseline == "super" or dy.startswith("-"):
+        tags.append("sup")
+
+    decoration = str(attrs.get("text-decoration", "")).lower()
+    if "overline" in decoration:
+        tags.append("o")
+    if "underline" in decoration:
+        tags.append("ins")
+    if "line-through" in decoration:
+        tags.append("s")
+
+    return tags
+
+
+def _signal_key_from_name(name: Any) -> str:
+    """Build a stable answer-key component from a signal name."""
+    if isinstance(name, str):
+        return name
+    text = _name_text(name).strip()
+    key = "".join(ch if ch.isalnum() or ch == "_" else "_" for ch in text)
+    return "_".join(part for part in key.split("_") if part)
+
+
+def _signal_key(sig: dict[str, Any]) -> str:
+    """Return the internal key for a signal."""
+    return sig.get("signal_key", sig["name"])
+
+
+def _signal_label(sig: dict[str, Any]) -> str:
+    """Return the visible text label for a signal."""
+    return sig.get("signal_label", _name_text(sig["name"]))
+
+
+def _wavedrom_name(sig: dict[str, Any]) -> str:
+    """Return the signal name passed to WaveDrom for rendering."""
+    return sig.get("wavedrom_name", _name_markup(sig["name"]))
+
+
 def _get_signals(element: Any, data: dict[str, Any]) -> list[dict[str, Any]]:
     """Return the normalized signal list from the PrairieLearn params."""
     signals_param = pl.get_string_attrib(
@@ -272,28 +371,43 @@ def _normalize_signal(sig: Any, idx: int) -> dict[str, Any]:
         raise Exception(f"pl-waveform: signal at index {idx} must be a dictionary")
 
     sig_name = sig.get("name", f"signal[{idx}]")
+    if not isinstance(sig_name, (str, list)):
+        raise Exception(
+            f"pl-waveform: signal at index {idx} must have a string or list 'name'"
+        )
+    signal_key = _signal_key_from_name(sig_name)
+    if not signal_key:
+        raise Exception(
+            f"pl-waveform: signal at index {idx} has a 'name' with no usable text"
+        )
     editable = bool(sig.get("editable", False))
-    normalized = {"name": sig_name, "editable": editable}
+    normalized = {
+        "name": sig_name,
+        "wavedrom_name": _name_markup(sig_name),
+        "signal_key": signal_key,
+        "signal_label": _name_text(sig_name),
+        "editable": editable,
+    }
     if editable:
         if "period" in sig:
             normalized["period"] = sig["period"]
         if "phase" in sig:
             raise Exception(
-                f"pl-waveform: editable signal '{sig_name}' cannot define 'phase'"
+                f"pl-waveform: editable signal '{signal_key}' cannot define 'phase'"
             )
     else:
         _copy_wave_options(normalized, sig)
 
     start = _normalize_wave_segment(
         sig,
-        sig_name,
+        signal_key,
         "start_wave",
         "start_data",
         "start_values",
     )
     end = _normalize_wave_segment(
         sig,
-        sig_name,
+        signal_key,
         "end_wave",
         "end_data",
         "end_values",
@@ -304,7 +418,7 @@ def _normalize_signal(sig: Any, idx: int) -> dict[str, Any]:
             normalized["allowed_values"] = sig["allowed_values"]
         body = _normalize_wave_segment(
             sig,
-            sig_name,
+            signal_key,
             "wave",
             "data",
             "values",
@@ -324,14 +438,14 @@ def _normalize_signal(sig: Any, idx: int) -> dict[str, Any]:
         for answer_idx, value in enumerate(correct_answers, start=1):
             if _canonical_value(value, allowed_values) is None:
                 raise Exception(
-                    f"pl-waveform: editable signal '{sig_name}' has values entry '{value}' "
+                    f"pl-waveform: editable signal '{signal_key}' has values entry '{value}' "
                     f"at cycle {answer_idx} that is not in allowed_values {allowed_values}"
                 )
         return normalized
 
     body = _normalize_wave_segment(
         sig,
-        sig_name,
+        signal_key,
         "wave",
         "data",
         "values",
@@ -459,7 +573,7 @@ def _build_wavedrom(signals: list[dict[str, Any]], hscale: float) -> str:
     """Build the WaveDrom JSON payload for rendering."""
     wd_signals = []
     for sig in signals:
-        s = {"name": sig["name"]}
+        s = {"name": _wavedrom_name(sig)}
         s["wave"] = sig["wave"]
         if "period" in sig:
             s["period"] = sig["period"]
@@ -475,6 +589,21 @@ def _build_wavedrom(signals: list[dict[str, Any]], hscale: float) -> str:
             "config": {"hscale": hscale},
             "head": {"tick": 0},
         }
+    )
+
+
+def _formatted_name_entries(signals: list[dict[str, Any]]) -> str:
+    """Build client-side metadata for rich signal-name rendering."""
+    return json.dumps(
+        [
+            {
+                "label": _signal_label(sig),
+                "rendered_name": _wavedrom_name(sig),
+                "name": sig["name"],
+            }
+            for sig in signals
+            if isinstance(sig.get("name"), list)
+        ]
     )
 
 
@@ -496,7 +625,7 @@ def _editable_cells(sig: dict[str, Any], answers_name: str) -> list[dict[str, An
                 "editable_index": editable_index,
                 "cycle_num": editable_index,
                 "abs_index": abs_index,
-                "key": _answer_key(answers_name, sig["name"], editable_index),
+                "key": _answer_key(answers_name, _signal_key(sig), editable_index),
                 "correct_value": correct_value,
                 "period": sig.get("period", 1),
             }
@@ -674,7 +803,7 @@ def _build_question_signals(
         return result
 
     editable_bus_names = {
-        sig["name"]
+        _signal_key(sig)
         for sig in signals
         if sig.get("editable") and _uses_bus_rendering(sig)
     }
@@ -682,7 +811,7 @@ def _build_question_signals(
         return result
 
     for sig in result:
-        if sig.get("name") in editable_bus_names:
+        if _signal_key(sig) in editable_bus_names:
             sig.pop("data", None)
     return result
 
@@ -720,12 +849,14 @@ def _build_editable_row_model(
                 "is_zero": submitted_value == "0",
                 "is_one": submitted_value == "1",
                 "is_x": submitted_value == "x",
-                "aria_label": f"{sig['name']} cycle {cell['editable_index']} answer",
+                "aria_label": f"{_signal_label(sig)} cycle {cell['editable_index']} answer",
             }
         )
 
     return {
-        "signal_name": sig["name"],
+        "signal_name": _signal_label(sig),
+        "signal_key": _signal_key(sig),
+        "display_name": _wavedrom_name(sig),
         "wave": sig["wave"],
         "wave_length": len(sig["wave"]),
         "data": sig.get("data", []),
@@ -747,24 +878,25 @@ def _validate_signals(signals: Any, answers_name: str) -> None:
     expected_duration = None
     for idx, sig in enumerate(signals):
         sig_name = sig.get("name")
+        signal_key = _signal_key(sig)
         wave = sig.get("wave")
-        if not sig_name or not isinstance(sig_name, str):
+        if not sig_name or not isinstance(sig_name, (str, list)):
             raise Exception(
-                f"pl-waveform: signal at index {idx} must have a string 'name'"
+                f"pl-waveform: signal at index {idx} must have a string or list 'name'"
             )
-        if sig_name in seen_names:
+        if signal_key in seen_names:
             raise Exception(
-                f"pl-waveform: duplicate signal name '{sig_name}' in '{answers_name}'"
+                f"pl-waveform: duplicate signal name '{signal_key}' in '{answers_name}'"
             )
-        seen_names.add(sig_name)
+        seen_names.add(signal_key)
 
         if not isinstance(wave, str):
             raise Exception(
-                f"pl-waveform: signal '{sig_name}' must have a string 'wave'"
+                f"pl-waveform: signal '{signal_key}' must have a string 'wave'"
             )
         if len(wave) == 0:
             raise Exception(
-                f"pl-waveform: signal '{sig_name}' must define a non-empty 'wave'"
+                f"pl-waveform: signal '{signal_key}' must define a non-empty 'wave'"
             )
 
         duration = len(wave) * float(sig.get("period", 1))
@@ -772,7 +904,7 @@ def _validate_signals(signals: Any, answers_name: str) -> None:
             expected_duration = duration
         elif abs(duration - expected_duration) > 1e-9:
             raise Exception(
-                f"pl-waveform: signal '{sig_name}' has duration {duration:g}, "
+                f"pl-waveform: signal '{signal_key}' has duration {duration:g}, "
                 f"but expected {expected_duration:g}; adjust wave length or period"
             )
 
@@ -781,24 +913,24 @@ def _validate_signals(signals: Any, answers_name: str) -> None:
 
         if "correct_answers" not in sig:
             raise Exception(
-                f"pl-waveform: editable signal '{sig_name}' must define 'correct_answers'"
+                f"pl-waveform: editable signal '{signal_key}' must define 'correct_answers'"
             )
         if "correct_wave" not in sig or not isinstance(sig.get("correct_wave"), str):
             raise Exception(
-                f"pl-waveform: editable signal '{sig_name}' must define string 'correct_wave'"
+                f"pl-waveform: editable signal '{signal_key}' must define string 'correct_wave'"
             )
 
         correct_answers = sig.get("correct_answers")
         if not isinstance(correct_answers, list):
             raise Exception(
-                f"pl-waveform: editable signal '{sig_name}' must define 'correct_answers' as a list"
+                f"pl-waveform: editable signal '{signal_key}' must define 'correct_answers' as a list"
             )
         allowed_values = _get_allowed_values(sig)
 
         editable_cells = _editable_cells(sig, answers_name)
         if len(editable_cells) != len(correct_answers):
             raise Exception(
-                f"pl-waveform: editable signal '{sig_name}' has {len(editable_cells)} editable cells in 'wave' "
+                f"pl-waveform: editable signal '{signal_key}' has {len(editable_cells)} editable cells in 'wave' "
                 f"but {len(correct_answers)} entries in 'correct_answers'"
             )
 
@@ -806,7 +938,7 @@ def _validate_signals(signals: Any, answers_name: str) -> None:
             canonical = _canonical_value(val, allowed_values)
             if canonical is None:
                 raise Exception(
-                    f"pl-waveform: editable signal '{sig_name}' has correct_answers value '{val}' "
+                    f"pl-waveform: editable signal '{signal_key}' has correct_answers value '{val}' "
                     f"at cycle {cycle_idx} that is not in allowed_values {allowed_values}"
                 )
 
@@ -861,7 +993,7 @@ def _question_cell_model(
 
     return {
         "key": cell["key"],
-        "signal_name": sig["name"],
+        "signal_name": _signal_label(sig),
         "raw_value": canonical_raw if canonical_raw is not None else raw,
         "has_raw_value": bool(raw),
         "editable": is_editable,
@@ -875,7 +1007,7 @@ def _question_cell_model(
         "allowed_values_json": json.dumps(allowed_values),
         "text_input_hint": _format_allowed_values_hint(allowed_values),
         "text_input_maxlength": max(len(value) for value in allowed_values),
-        "aria_label": f"{sig['name']} cycle {cell['editable_index']} answer",
+        "aria_label": f"{_signal_label(sig)} cycle {cell['editable_index']} answer",
     }
 
 
@@ -900,7 +1032,7 @@ def _question_editable_rows(
         )
         editable_rows.append(
             {
-                "signal_name": sig["name"],
+                "signal_name": _signal_label(sig),
                 "cells": [
                     _question_cell_model(
                         sig, cell, raw_answers, is_editable, input_mode
@@ -946,7 +1078,7 @@ def _question_cell_scores(
             is_unanswered = submitted_raw is None
             cell_scores.append(
                 {
-                    "signal_name": sig["name"],
+                    "signal_name": _signal_label(sig),
                     "cycle_num": cell["editable_index"],
                     "abs_index": cell["abs_index"],
                     "period": cell["period"],
@@ -992,13 +1124,14 @@ def _question_render_params(
         "input_mode": input_mode,
         "toggle_question": input_mode == "toggle",
         "wavedrom_json": _build_wavedrom(question_signals, hscale),
+        "formatted_names_json": _formatted_name_entries(question_signals),
         "base_wavedrom_json": _build_wavedrom(signals, hscale),
         "editable_row_models_json": json.dumps(editable_row_models),
         "editable_rows": editable_rows,
         "has_editable": len(editable_rows) > 0,
         "cycle_headers": [{"cycle_num": idx + 1} for idx in range(max_cycles)],
         "editable_signals_json": json.dumps(
-            [sig["name"] for sig in _editable_signals(signals)]
+            [_signal_label(sig) for sig in _editable_signals(signals)]
         ),
         "parse_errors_json": json.dumps(parse_errors),
         "has_parse_errors": len(parse_errors) > 0,
@@ -1025,7 +1158,7 @@ def _submission_cell_result(
     is_unanswered = submitted_raw is None
 
     return {
-        "signal_name": sig["name"],
+        "signal_name": _signal_label(sig),
         "cycle_num": cell["editable_index"],
         "abs_index": cell["abs_index"],
         "period": cell["period"],
@@ -1063,7 +1196,7 @@ def _submission_results(
         correct_count += row_correct
         result_rows.append(
             {
-                "signal_name": sig["name"],
+                "signal_name": _signal_label(sig),
                 "cells": row_cells,
                 "row_correct": row_correct == len(row_cells),
                 "row_incorrect": row_correct != len(row_cells),
@@ -1100,9 +1233,10 @@ def _submission_render_params(
         "wavedrom_json": _build_wavedrom(
             _build_submission_signals(signals, data, answers_name), hscale
         ),
+        "formatted_names_json": _formatted_name_entries(signals),
         "cell_scores_json": json.dumps(feedback_cells),
         "editable_signals_json": json.dumps(
-            [sig["name"] for sig in _editable_signals(signals)]
+            [_signal_label(sig) for sig in _editable_signals(signals)]
         ),
         "correct_count": correct_count,
         "total_cells": total_cells,
@@ -1134,7 +1268,7 @@ def _answer_diff_cells(
             )
             diff_cells.append(
                 {
-                    "signal_name": sig["name"],
+                    "signal_name": _signal_label(sig),
                     "cycle_num": cell["editable_index"],
                     "abs_index": cell["abs_index"],
                     "period": cell["period"],
@@ -1172,9 +1306,10 @@ def render(element_html, data):
             "wavedrom_json": _build_wavedrom(
                 _build_correct_signals(signals, answers_name), hscale
             ),
+            "formatted_names_json": _formatted_name_entries(signals),
             "diff_json": json.dumps(_answer_diff_cells(signals, answers_name, data)),
             "editable_signals_json": json.dumps(
-                [sig["name"] for sig in _editable_signals(signals)]
+                [_signal_label(sig) for sig in _editable_signals(signals)]
             ),
             "uuid": pl.get_uuid(),
         }

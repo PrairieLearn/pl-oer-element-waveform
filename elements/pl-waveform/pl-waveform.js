@@ -38,6 +38,7 @@ $(document).ready(function () {
 // ═══════════════════════════════════════════════════════════════════════════
 
 var DEFAULT_ALLOWED_VALUES = ['0', '1', 'x'];
+var SVG_NS = 'http://www.w3.org/2000/svg';
 
 /** Normalize a raw value for comparison. */
 function normalizeRawValue(value) {
@@ -256,6 +257,76 @@ function getEditableSignals(container) {
     }
 }
 
+/** Read formatted signal-name metadata for a rendered waveform. */
+function getFormattedNames(container) {
+    if (!container._plWaveformFormattedNames) {
+        container._plWaveformFormattedNames = parseJsonScript(container, '.pl-waveform-formatted-names', []);
+    }
+    return container._plWaveformFormattedNames;
+}
+
+/** Return whether a value is a plain object. */
+function isPlainObject(value) {
+    return Object.prototype.toString.call(value) === '[object Object]';
+}
+
+/** Set safe SVG tspan attributes from authored WaveDrom name metadata. */
+function setTspanAttributes(tspan, attrs) {
+    if (!isPlainObject(attrs)) return;
+    Object.keys(attrs).forEach(function (name) {
+        var value = attrs[name];
+        if (value === null || value === undefined) return;
+        tspan.setAttribute(name, String(value));
+    });
+}
+
+/** Append SVG tspans for an authored WaveDrom-style name value. */
+function appendFormattedName(parent, value) {
+    if (value === null || value === undefined || isPlainObject(value)) return;
+
+    if (!Array.isArray(value)) {
+        parent.appendChild(document.createTextNode(String(value)));
+        return;
+    }
+
+    var children = value;
+    var attrs = null;
+    if (value[0] === 'tspan') {
+        children = value.slice(1);
+    }
+    if (children.length > 0 && isPlainObject(children[0])) {
+        attrs = children[0];
+        children = children.slice(1);
+    }
+
+    var span = document.createElementNS(SVG_NS, 'tspan');
+    setTspanAttributes(span, attrs);
+    children.forEach(function (child) {
+        appendFormattedName(span, child);
+    });
+    parent.appendChild(span);
+}
+
+/** Normalize a rendered label for matching against WaveDrom text output. */
+function normalizeLabelText(value) {
+    return String(value || '').replace(/\s+/g, '').trim();
+}
+
+/** Apply authored rich signal names after WaveDrom renders string labels. */
+function applyFormattedSignalNames(container) {
+    var svg = container.querySelector('svg');
+    if (!svg) return;
+
+    getFormattedNames(container).forEach(function (entry) {
+        if (!entry || !Array.isArray(entry.name)) return;
+        Array.from(svg.querySelectorAll('text.info[text-anchor="end"]')).forEach(function (text) {
+            if (normalizeLabelText(text.textContent) !== normalizeLabelText(entry.label)) return;
+            text.textContent = '';
+            appendFormattedName(text, entry.name);
+        });
+    });
+}
+
 /** Return the per-container map of cells touched by the student. */
 function getTouchedCellMap(container) {
     if (!container._plWaveformTouchedCells) {
@@ -348,13 +419,19 @@ function rerenderWaveDrom(container, model) {
 
     script.textContent = JSON.stringify(model);
     WaveDrom.RenderWaveForm(index, model, 'WaveDrom_Display_');
+    applyFormattedSignalNames(container);
 }
 
-/** Find a signal entry by name within a WaveDrom model. */
+/** Return whether two WaveDrom signal names refer to the same display value. */
+function signalNamesEqual(left, right) {
+    return JSON.stringify(left) === JSON.stringify(right);
+}
+
+/** Find a signal entry by display name within a WaveDrom model. */
 function findWaveDromSignal(model, signalName) {
     if (!model || !Array.isArray(model.signal)) return null;
     for (var idx = 0; idx < model.signal.length; idx += 1) {
-        if (model.signal[idx] && model.signal[idx].name === signalName) {
+        if (model.signal[idx] && signalNamesEqual(model.signal[idx].name, signalName)) {
             return model.signal[idx];
         }
     }
@@ -456,7 +533,7 @@ function updateQuestionWaveDrom(container) {
     if (!model) return;
 
     getEditableRowModels(container).forEach(function (rowModel) {
-        applyEditableRowToSignal(container, findWaveDromSignal(model, rowModel.signal_name), rowModel);
+        applyEditableRowToSignal(container, findWaveDromSignal(model, rowModel.display_name || rowModel.signal_name), rowModel);
     });
 
     rerenderWaveDrom(container, model);
@@ -911,6 +988,8 @@ function positionTextInputs(container) {
 function initContainer(container) {
     var panel = container.getAttribute('data-panel') || '';
     var inputMode = getInputMode(container);
+
+    applyFormattedSignalNames(container);
 
     if (panel === 'question') {
         if (inputMode === 'toggle') {

@@ -442,6 +442,50 @@ def test_editable_rows_support_period_metadata_and_duration() -> None:
     assert row_model["period"] == 0.5
 
 
+def test_array_signal_name_preserves_wavedrom_display_and_uses_text_key() -> None:
+    formatted_name = [
+        "tspan",
+        ["tspan", {"fill": "#0d6efd", "font-weight": "bold"}, "DATA"],
+        " ",
+        ["tspan", {"fill": "#dc3545", "baseline-shift": "sub"}, "out"],
+        " ",
+        ["tspan", {"fill": "#198754", "font-style": "italic"}, "inv"],
+    ]
+    element_html = '<pl-waveform answers-name="fmt"></pl-waveform>'
+    data = _base_data(
+        [
+            {"name": "clk", "editable": False, "wave": "lP"},
+            {
+                "name": formatted_name,
+                "editable": True,
+                "values": ["1", "0"],
+            },
+        ]
+    )
+
+    pl_waveform.prepare(element_html, data)
+    rendered = _render(element_html, data)
+    waveform = json.loads(rendered["wavedrom_json"])
+    row_model = json.loads(rendered["editable_row_models_json"])[0]
+
+    assert waveform["signal"][1]["name"] == "<b>DATA</b> <sub>out</sub> <i>inv</i>"
+    assert data["correct_answers"] == {
+        "fmt_DATA_out_inv_1": "1",
+        "fmt_DATA_out_inv_2": "0",
+    }
+    assert rendered["editable_rows"][0]["signal_name"] == "DATA out inv"
+    assert row_model["signal_key"] == "DATA_out_inv"
+    assert row_model["signal_name"] == "DATA out inv"
+    assert row_model["display_name"] == "<b>DATA</b> <sub>out</sub> <i>inv</i>"
+    assert json.loads(rendered["formatted_names_json"]) == [
+        {
+            "label": "DATA out inv",
+            "rendered_name": "<b>DATA</b> <sub>out</sub> <i>inv</i>",
+            "name": formatted_name,
+        }
+    ]
+
+
 def test_text_mode_metadata_supports_single_and_multicharacter_values() -> None:
     element_html = '<pl-waveform answers-name="decode" input-mode="text"></pl-waveform>'
     data = _base_data(
@@ -601,5 +645,5 @@ def test_waveform_demo_signal_sets_match_the_current_element_contract() -> None:
             if sig.get("editable")
         )
 
-    assert validated == 8
-    assert answer_keys == 61
+    assert validated == 9
+    assert answer_keys == 65

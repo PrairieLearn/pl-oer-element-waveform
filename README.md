@@ -111,10 +111,13 @@ The `values` format above is the recommended authoring interface for those not f
 
 Non-editable rows can only use either `values` **or** `wave`/`data`. Editable rows cannot use `wave`/`data` for the answerable segment; they must use `values`. Their fixed start/end segments may use `start_wave`/`start_data` and `end_wave`/`end_data` when the context needs raw WaveDrom notation.
 
+Advanced WaveDrom-style signal names are also supported. Instead of a string, `name` may be a WaveDrom name array, such as a `tspan` structure, to format the rendered label. For editable rows, answer keys are based on the flattened label text with punctuation replaced by underscores.
+
 ```python
 data["params"]["signals"] = [
     {"name": "clk", "editable": False, "wave": "lP......"},
     {"name": "addr", "editable": False, "wave": "=.=", "data": ["first", "second"]},
+    {"name": ["tspan", ["tspan", {"fill": "#0d6efd", "font-weight": "bold"}, "DATA"], " ", ["tspan", {"fill": "#dc3545", "baseline-shift": "sub"}, "out"]], "editable": False, "values": [0, 1]},
     {
         "name": "out",
         "editable": True,
