@@ -47,7 +47,7 @@
            {{#has_raw_value}}value="{{{raw_value}}}"{{/has_raw_value}}
            {{^editable}}disabled{{/editable}}
            placeholder="?"
-           maxlength="1"
+           maxlength="{{text_input_maxlength}}"
            autocomplete="off"
            data-lpignore="true"
            style="position:absolute;visibility:hidden;"/>
@@ -58,80 +58,17 @@
 </div>
 {{/question}}
 {{#submission}}
-{{#has_feedback}}
-<div class="pl-waveform-submission-section">
-    <div class="pl-waveform-submission-header">
-        {{#label}}<span class="pl-waveform-submission-label">{{{label}}}</span>{{/label}}
-        <span>
-            {{#correct}}<span class="badge text-bg-success"><i class="fa fa-check" aria-hidden="true"></i> 100%</span>{{/correct}}
-            {{#partial}}<span class="badge text-bg-danger"><i class="far fa-circle" aria-hidden="true"></i> {{score_pct}}%</span>{{/partial}}
-            {{#incorrect}}<span class="badge text-bg-danger"><i class="fa fa-times" aria-hidden="true"></i> 0%</span>{{/incorrect}}
-        </span>
-    </div>
-    <div class="pl-waveform pl-waveform-submission-view"
-         id="pl-waveform-sub-{{uuid}}"
-         data-panel="submission"
-         data-editable-signals="{{editable_signals_json}}"
-         {{#fb_cell}}data-feedback="{{{feedback_json}}}"{{/fb_cell}}
-         {{#fb_row}}data-feedback-rows="{{{feedback_json}}}"{{/fb_row}}>
-        <script type="WaveDrom">
-        {{{wavedrom_json}}}
-        </script>
-    </div>
-    {{#fb_cell}}
-    <table class="pl-waveform-feedback-table">
-        <thead>
-            <tr>
-                <th class="pl-waveform-th-signal">Signal</th>
-                {{#cycle_headers}}
-                <th class="pl-waveform-th-cycle">{{cycle_num}}</th>
-                {{/cycle_headers}}
-            </tr>
-        </thead>
-        <tbody>
-            {{#result_rows}}
-            <tr>
-                <td class="pl-waveform-signal-label"><code>{{signal_name}}</code></td>
-                {{#cells}}
-                <td class="pl-waveform-fb-cell {{#correct}}pl-waveform-fb-cell-correct{{/correct}}{{#incorrect}}pl-waveform-fb-cell-incorrect{{/incorrect}}{{#invalid}} pl-waveform-fb-cell-invalid{{/invalid}}">
-                    {{#has_submitted}}
-                    {{#correct}}<span class="pl-waveform-fb-icon pl-waveform-fb-icon-correct" aria-hidden="true">&#x2713;</span>{{/correct}}
-                    {{#invalid}}<span class="pl-waveform-fb-icon pl-waveform-fb-icon-invalid" title="{{invalid_message}}" aria-label="{{invalid_message}}">!</span>{{/invalid}}
-                    {{^invalid}}
-                    {{#incorrect}}<span class="pl-waveform-fb-icon pl-waveform-fb-icon-incorrect" aria-hidden="true">&#x2717;</span>{{/incorrect}}
-                    {{/invalid}}
-                    <span class="pl-waveform-fb-submitted">{{submitted}}</span>
-                    {{#invalid}}
-                    <span class="pl-waveform-fb-invalid-note">invalid</span>
-                    {{/invalid}}
-                    {{#incorrect}}
-                    <span class="pl-waveform-fb-expected">{{correct_value}}</span>
-                    {{/incorrect}}
-                    {{/has_submitted}}
-                    {{^has_submitted}}<span class="text-muted">&mdash;</span>{{/has_submitted}}
-                </td>
-                {{/cells}}
-            </tr>
-            {{/result_rows}}
-        </tbody>
-    </table>
-    {{/fb_cell}}
-    {{#fb_row}}
-    <div class="pl-waveform-row-feedback">
-        {{#result_rows}}
-        <div class="pl-waveform-row-result {{#row_correct}}pl-waveform-row-correct{{/row_correct}}{{#row_incorrect}}pl-waveform-row-incorrect{{/row_incorrect}}">
-            <code>{{signal_name}}</code>
-            {{#row_correct}}<span class="pl-waveform-row-badge-correct">{{row_score}} correct</span>{{/row_correct}}
-            {{#row_incorrect}}<span class="pl-waveform-row-badge-incorrect">{{row_score}} correct</span>{{/row_incorrect}}
-        </div>
-        {{/result_rows}}
-    </div>
-    {{/fb_row}}
-    {{#fb_table}}
-    <div class="pl-waveform-summary-text">{{correct_count}} / {{total_cells}} correct</div>
-    {{/fb_table}}
+<div class="pl-waveform pl-waveform-submission-view"
+     id="pl-waveform-sub-{{uuid}}"
+     data-panel="submission"
+     data-input-mode="{{input_mode}}"
+     data-editable-signals="{{editable_signals_json}}"
+     data-feedback="{{feedback}}"
+     {{#has_cell_scores}}data-cell-scores="{{cell_scores_json}}"{{/has_cell_scores}}>
+    <script type="WaveDrom">
+    {{{wavedrom_json}}}
+    </script>
 </div>
-{{/has_feedback}}
 {{/submission}}
 {{#answer}}
 <div class="pl-waveform pl-waveform-answer-view"

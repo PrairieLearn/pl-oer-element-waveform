@@ -23,32 +23,21 @@ values via click or by entering their values.
 
 ```html
 <pl-question-panel>
-  <p>Fill in the value of <code>Q</code> after each positive clock edge.</p>
+  <p>Complete the output signal.</p>
 </pl-question-panel>
 
 <pl-waveform answers-name="timing" hscale="1.5"></pl-waveform>
 ```
 
 ```python
-import random
-
-
 def generate(data):
-    d_values = random.choices(["0", "1"], k=12)
-    q_answers = []
-
-    for i in range(1, len(d_values)):
-        if i % 2 == 1 and i != len(d_values) - 1:
-            q_answers.append(d_values[i])
-
     data["params"]["signals"] = [
-        {"name": "clk", "wave": "lP....", "editable": False},
-        {"name": "D", "wave": d_values, "period": 0.5, "editable": False},
+        {"name": "input", "editable": False, "values": [0, 0, 1, 1, 0, 0]},
         {
-            "name": "Q",
-            "prefix": "0",
+            "name": "output",
             "editable": True,
-            "correct_answers": q_answers,
+            "start_values": ["0"],
+            "values": [0, 1, 1, 0, 0],
         },
     ]
 ```
@@ -61,61 +50,8 @@ def generate(data):
 | `weight` | integer (default: `1`) | Weight applied to each editable cell during grading. |
 | `hscale` | float (default: `1.5`) | WaveDrom horizontal scale factor. |
 | `signals-param` | string (default: `"signals"`) | Key in `data["params"]` containing the signal data as a list (see below). |
-| `feedback` | string (default: `"cell"`) | Granularity for feedback given to students: `"cell"`, `"row"`, or `"table"`. |
+| `feedback` | string (default: `"cell"`) | Granularity for feedback given to students: `"cell"`, `"row"`, `"element"`, or `"none"`. |
 | `input-mode` | string (default: `"toggle"`) | Input mechanism used for student submissions: `"toggle"` or `"text"`. |
-| `label` | string (optional) | Label shown in the submission card header. |
-| `show-score` | boolean (default: `true`) | Whether to show score overlays in the question panel after submission. |
-
-### Signal Data
-
-Signal definitions are stored in `data["params"]` in the key that matches the `signals-param` attribute (see above). Each signal row is a dictionary with at minimum a unique `name` and an `"editable"` key. Signals with `"editable"` set to `True` are filled in by students, those with it set to `False` are pre-rendered rows. The remaining keys are different for editable and non-editable rows.
-
-#### Editable Signals
-
-Editable signals require a `"correct_answers"` key that is used for auto-grading and generating the sample solution in the answer panel. Correct answers can be provided as an array of integers or strings (the latter also supports `"x"`), or as a WaveDrom string (with `"."` optionally representing a repeat of the previous signal).
-
-```python
-data["params"]["signals"] = [
-    {"name": "A", "correct_answers": ["0", "0", "1", "1"], "editable": True},
-    {"name": "B", "correct_answers": [0, 0, 1, 1], "editable": True},
-    {"name": "C", "correct_answers": "0.1.", "editable": True},
-]
-```
-
-Editable signals can be assigned a `prefix` and/or a `suffix` that are pre-rendered and not editable. Note that the size of each row (length of `prefix` + `correct_answers` + `suffix`) must match.
-
-```python
-data["params"]["signals"] = [
-    {"name": "A", "correct_answers": "0.1.", "prefix": "11", "editable": True},
-    {"name": "B", "correct_answers": "1.0.", "suffix": "11", "editable": True},
-    {"name": "C", "correct_answers": "1.0.1.", "editable": True},
-]
-```
-
-#### Pre-rendered Signals
-
-Non-editable signals that are rendered for reference can be defined via the `wave` key. It supports the same input formats as the `correct_answers` key, but also some special WaveDrom syntax for clock and bus values (see below). In addition, the period of a non-editable wave can be adjusted via `period` (default is `1`). As for editable signals, the total size of each row (after `period` scaling must match).
-
-```python
-data["params"]["signals"] = [
-    {"name": "clk", "wave": "lP......", "editable": False},
-    {"name": "D", "wave": "01.0", "period": 0.5, "editable": False},
-]
-```
-
-#### Non-binary Signals
-
-The `allowed_values` key enables student inputs beyond binary signals. By default, students can only enter (or toggle between) 0 and 1 (and `x`, if present in the `correct_answers` string). By setting `allowed_values`, non-binary signals like ternary or hexadecimal can also be supported. You can use `"hex"` as a special string instead of listing all values from 0 to F.
-
-```python
-data["params"]["signals"] = [
-    {"name": "ternary", "correct_answers": "2102", "allowed_values": "012", "editable": True},
-    {"name": "hex", "correct_answers": "ABC123", "allowed_values": "hex", "editable": True},
-]
-```
-
-Note that pre-rendered signals support hexadecimal values, but custom `allowed_values` are not supported in pre-rendered signals as this conflicts with WaveDrom's special syntax (see below). To encode these values, we recommend using the bus syntax.
-
 
 ### Input Modes and Feedback
 
@@ -125,12 +61,71 @@ The `feedback` attribute controls the granularity of post-submission feedback th
 
 | Value | Description |
 |-------|-------------|
-| `"cell"` | Per-cell green/red overlays and detailed submitted-vs-expected feedback. |
-| `"row"` | Per-row correctness highlighting and row score summaries. |
-| `"table"` | Overall score summary only. |
+| `"cell"` | Per-cell highlighting and feedback. |
+| `"row"` | Per-row highlighting and row score summaries. |
+| `"element"` | Single whole-element `N out of X` score overlay. |
+| `"none"` | Hide all visual feedback for the element. |
 
 
-### Wave Encoding
+### Signal Data
+
+Signal definitions are stored in `data["params"]` in the key that matches the `signals-param` attribute (see above). Each signal row is a dictionary with at minimum a unique `name` and an `"editable"` key. Signals with `"editable"` set to `True` are filled in by students, and signals with it set to `False` are pre-rendered reference rows.
+
+#### Values
+
+You can define the correct answer, or a pre-rendered signal if `"editable"` is `False`, in the `values` key. It must be a list of strings or integers, although only `0` and `1` are supported as integers. All `values` lists used within the same element must have the same size.
+
+```python
+data["params"]["signals"] = [
+    {"name": "A", "editable": False, "values": [0, 0, 1, 1]},
+    {"name": "B", "editable": True, "values": ["0", "1", "1", "0"]},
+]
+```
+
+The values `0`, `1`, `x`, and `z` render as ordinary digital states. Other values are supported, but render as labeled bus boxes. For example, `["0", "ABC", "0xFF"]` displays a low digital state followed by two labeled bus boxes.
+
+#### Editable Signals
+
+Editable signals use `values` for the answerable segment. They can optionally include fixed context before or after the editable cells with `start_values` and `end_values`. The total size of all three value lists must match that of all other rows within the same element.
+
+```python
+data["params"]["signals"] = [
+    {"name": "out", "editable": True, "start_values": ["0", "1"], "values": ["1", "0", "1"], "end_values": ["1", "0"]},
+]
+```
+
+Editable rows cannot define `period` or `phase`. By default, editable rows allow binary values plus every value in the solution `values` list (e.g., `z`, or any bus values). You can customize this and add more allowed values by defining a list of `allowed_values`; this list must include every solution value and cannot contain duplicates. The special string `"hex"` expands to `0` through `F`.
+
+```python
+data["params"]["signals"] = [
+    {"name": "ternary", "editable": True, "values": ["2", "1", "0", "2"], "allowed_values": ["0", "1", "2"]},
+    {"name": "hex", "editable": True, "values": ["A", "B", "C"], "allowed_values": "hex"},
+]
+```
+
+#### Advanced WaveDrom Syntax
+
+The `values` format above is the recommended authoring interface for those not familiar with WaveDrom's syntax. To use all of WaveDrom's customization abilities or import existing wave drawings, you can also use raw WaveDrom notation. This notation is defined via the `wave` key (and optionally `data` for busses). 
+
+Non-editable rows can only use either `values` **or** `wave`/`data`. Editable rows cannot use `wave`/`data` for the answerable segment; they must use `values`. Their fixed start/end segments may use `start_wave`/`start_data` and `end_wave`/`end_data` when the context needs raw WaveDrom notation.
+
+```python
+data["params"]["signals"] = [
+    {"name": "clk", "editable": False, "wave": "lP......"},
+    {"name": "addr", "editable": False, "wave": "=.=", "data": ["first", "second"]},
+    {
+        "name": "out",
+        "editable": True,
+        "start_wave": "=.",       # pre-rendered bus for 2 periods
+        "start_data": ["held"],   # pre-rendered bus label
+        "values": ["A", "B"],     # correct answer for student-defined segment 
+        "allowed_values": "hex",  # allowed inputs for the student-defined segment
+        "end_wave": "0.",         # pre-rendered low state for 2 periods
+    },
+]
+```
+
+The element also supports `period` and `phase` attributes for non-editable rows, which are passed through to WaveDrom for each row. The total row duration after `period` scaling must match across rows.
 
 The `wave` key supports the following WaveDrom syntax:
 
@@ -140,16 +135,11 @@ The `wave` key supports the following WaveDrom syntax:
 | `1` | High state |
 | `.` | Hold previous value |
 | `x` | Unknown |
+| `z` | High impedance |
 | `l`, `h` | Clock low/high |
 | `P`, `N` | Positive/negative clock edge |
-| `=` | Bus value (see below) |
+| `=`, `2`-`9` | Bus value using the next entry from `data` |
 
-For bus values, provide an additional `data` key that contains a list of strings with the bus labels. Note that `.` means that the previous bus is continued while `=` starts a new bus, so the number of `=`s should match the number of items in `data`.
+For bus values, provide an additional `data` key that contains a list of strings with the bus labels. Note that `.` means that the previous bus is continued while `=`, `2`, `3`, and similar bus-state characters start a new bus, so the number of bus-state characters should match the number of items in `data`.
 
-```python
-data["params"]["signals"] = [
-    {"name": "bus", "wave": "=.=", "data": ["first", "second"], "editable": False},
-]
-```
-
-Other `wave` [syntax](https://wavedrom.com/tutorial.html) is also supported, but keys like `phase`, `node` or `edge` are currently not. If you are interested in support for these keys, please open an issue in the element repository - we might be able to add support!
+Other `wave` [syntax](https://wavedrom.com/tutorial.html) may render, but should be used with caution. Advanced keys like `edge` or `node` are not currently supported.

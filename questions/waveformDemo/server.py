@@ -28,25 +28,24 @@ def _encode_bus(values):
     return "".join(wave), data
 
 
-def _encode_repeat_string(values):
-    wave = [values[0]]
-    for idx in range(1, len(values)):
-        wave.append("." if values[idx] == values[idx - 1] else values[idx])
-    return "".join(wave)
-
-
 def generate(data):
     binary_values = ["0", "1"]
+    opcode_labels = {
+        "00": "IDLE",
+        "01": "LOAD",
+        "10": "STORE",
+        "11": "HOLD",
+    }
 
     d_values, q_answers = _make_dff(12)
     data["params"]["signals"] = [
-        {"name": "clk", "wave": "lP....", "editable": False},
-        {"name": "D", "wave": d_values, "period": 0.5, "editable": False},
+        {"name": "clk", "editable": False, "wave": "lP...."},
+        {"name": "D", "editable": False, "values": d_values, "period": 0.5},
         {
             "name": "Q",
-            "prefix": "0",
             "editable": True,
-            "correct_answers": q_answers,
+            "start_values": ["0"],
+            "values": q_answers,
         },
     ]
 
@@ -72,20 +71,20 @@ def generate(data):
             q_bar_values.append("1" if q_state == "0" else "0")
 
     data["params"]["jk_signals"] = [
-        {"name": "clk", "wave": "lP......", "editable": False},
-        {"name": "J", "wave": j_values, "period": 0.5, "editable": False},
-        {"name": "K", "wave": k_values, "period": 0.5, "editable": False},
+        {"name": "clk", "editable": False, "wave": "lP......"},
+        {"name": "J", "editable": False, "values": j_values, "period": 0.5},
+        {"name": "K", "editable": False, "values": k_values, "period": 0.5},
         {
             "name": "Q",
-            "prefix": "0",
             "editable": True,
-            "correct_answers": q_values,
+            "start_values": ["0"],
+            "values": q_values,
         },
         {
             "name": "Q'",
-            "prefix": "1",
             "editable": True,
-            "correct_answers": q_bar_values,
+            "start_values": ["1"],
+            "values": q_bar_values,
         },
     ]
 
@@ -101,14 +100,14 @@ def generate(data):
             q_enable_answers.append(q_enable_state)
 
     data["params"]["enable_signals"] = [
-        {"name": "clk", "wave": "lP....", "editable": False},
-        {"name": "D", "wave": d_enable_values, "period": 0.5, "editable": False},
-        {"name": "EN", "wave": enable_values, "period": 0.5, "editable": False},
+        {"name": "clk", "editable": False, "wave": "lP...."},
+        {"name": "D", "editable": False, "values": d_enable_values, "period": 0.5},
+        {"name": "EN", "editable": False, "values": enable_values, "period": 0.5},
         {
             "name": "Q",
-            "prefix": "0",
             "editable": True,
-            "correct_answers": q_enable_answers,
+            "start_values": ["0"],
+            "values": q_enable_answers,
         },
     ]
 
@@ -116,18 +115,17 @@ def generate(data):
     b_values = random.choices(binary_values, k=8)
     y_values = [
         "1" if a_value == "1" and b_value == "1" else "0"
-        for a_value, b_value in zip(a_values, b_values)
+        for a_value, b_value in zip(a_values[1::2], b_values[1::2])
     ]
 
     data["params"]["and_signals"] = [
-        {"name": "clk", "wave": "lP..", "editable": False},
-        {"name": "A", "wave": a_values, "period": 0.5, "editable": False},
-        {"name": "B", "wave": b_values, "period": 0.5, "editable": False},
+        {"name": "clk", "editable": False, "wave": "lP.."},
+        {"name": "A", "editable": False, "values": a_values, "period": 0.5},
+        {"name": "B", "editable": False, "values": b_values, "period": 0.5},
         {
             "name": "Y",
             "editable": True,
-            "correct_answers": y_values,
-            "period": 0.5,
+            "values": y_values,
         },
     ]
 
@@ -138,18 +136,18 @@ def generate(data):
 
     for i in range(1, len(d_tri_values)):
         if i % 2 == 1 and i != len(d_tri_values) - 1:
-            y_tri_answers.append(d_tri_values[i] if en_tri_values[i] == "1" else "x")
+            y_tri_answers.append(d_tri_values[i] if en_tri_values[i] == "1" else "z")
 
     data["params"]["tristate_signals"] = [
-        {"name": "clk", "wave": "lP....", "editable": False},
-        {"name": "EN", "wave": en_tri_values, "period": 0.5, "editable": False},
-        {"name": "D", "wave": d_tri_values, "period": 0.5, "editable": False},
+        {"name": "clk", "editable": False, "wave": "lP...."},
+        {"name": "EN", "editable": False, "values": en_tri_values, "period": 0.5},
+        {"name": "D", "editable": False, "values": d_tri_values, "period": 0.5},
         {
             "name": "Y",
-            "prefix": d_tri_values[0],
             "editable": True,
-            "correct_answers": _encode_repeat_string(y_tri_answers),
-            "allowed_values": "01x",
+            "start_values": [d_tri_values[0]],
+            "values": y_tri_answers,
+            "allowed_values": ["0", "1", "z"],
         },
     ]
 
@@ -165,46 +163,55 @@ def generate(data):
     raddr_b_wave, raddr_b_data = _encode_bus(raddr_b_values)
 
     data["params"]["reg_read_signals"] = [
-        {"name": "clk", "wave": "lP..", "editable": False},
+        {"name": "clk", "editable": False, "wave": "lP......"},
         {
             "name": "raddrA",
+            "editable": False,
             "wave": raddr_a_wave,
             "data": raddr_a_data,
-            "period": 0.5,
-            "editable": False,
+            "phase": 0.5,
         },
         {
             "name": "raddrB",
+            "editable": False,
             "wave": raddr_b_wave,
             "data": raddr_b_data,
-            "period": 0.5,
-            "editable": False,
+            "phase": 0.5,
         },
         {
             "name": "rdataA",
-            "correct_answers": rdata_a_values,
-            "allowed_values": "hex",
-            "period": 0.5,
             "editable": True,
+            "values": rdata_a_values,
+            "allowed_values": "hex",
         },
         {
             "name": "rdataB",
-            "correct_answers": rdata_b_values,
-            "allowed_values": "hex",
-            "period": 0.5,
             "editable": True,
+            "values": rdata_b_values,
+            "allowed_values": "hex",
         },
     ]
 
     data["params"]["mixed_signals"] = [
-        {"name": "clk", "wave": "lP.....", "editable": False},
-        {"name": "in", "wave": "01.0.10", "editable": False},
+        {"name": "clk", "editable": False, "wave": "lP....."},
+        {"name": "in", "editable": False, "wave": "01.0.10"},
         {
             "name": "out",
-            "prefix": "01",
-            "correct_answers": "101",
-            "suffix": "10",
             "editable": True,
+            "start_values": ["0", "1"],
+            "values": ["1", "0", "1"],
+            "end_values": ["1", "0"],
+        },
+    ]
+
+    opcode_values = random.choices(list(opcode_labels), k=5)
+    data["params"]["decode_signals"] = [
+        {"name": "opcode", "editable": False, "values": opcode_values},
+        {
+            "name": "operation",
+            "editable": True,
+            "values": [opcode_labels[opcode] for opcode in opcode_values],
+            "allowed_values": list(opcode_labels.values()),
         },
     ]
 
