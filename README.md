@@ -84,6 +84,8 @@ data["params"]["signals"] = [
 
 The values `0`, `1`, `x`, and `z` render as ordinary digital states. Other values are supported, but render as labeled bus boxes. For example, `["0", "ABC", "0xFF"]` displays a low digital state followed by two labeled bus boxes.
 
+The element also supports `period` for all rows and `phase` for non-editable rows. These attributes are passed through to WaveDrom. The total row duration (after `period` scaling) must match across rows.
+
 #### Editable Signals
 
 Editable signals use `values` for the answerable segment. They can optionally include fixed context before or after the editable cells with `start_values` and `end_values`. The total size of all three value lists must match that of all other rows within the same element.
@@ -94,7 +96,7 @@ data["params"]["signals"] = [
 ]
 ```
 
-Editable rows cannot define `period` or `phase`. By default, editable rows allow binary values plus every value in the solution `values` list (e.g., `z`, or any bus values). You can customize this and add more allowed values by defining a list of `allowed_values`; this list must include every solution value and cannot contain duplicates. The special string `"hex"` expands to `0` through `F`.
+Editable rows can define `period`, but not `phase`. By default, editable rows allow binary values plus every value in the solution `values` list (e.g., `z`, or any bus values). You can customize this and add more allowed values by defining a list of `allowed_values`; this list must include every solution value and cannot contain duplicates. The special string `"hex"` expands to `0` through `F`.
 
 ```python
 data["params"]["signals"] = [
@@ -124,8 +126,6 @@ data["params"]["signals"] = [
     },
 ]
 ```
-
-The element also supports `period` and `phase` attributes for non-editable rows, which are passed through to WaveDrom for each row. The total row duration after `period` scaling must match across rows.
 
 The `wave` key supports the following WaveDrom syntax:
 

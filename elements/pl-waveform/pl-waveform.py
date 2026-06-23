@@ -275,11 +275,12 @@ def _normalize_signal(sig: Any, idx: int) -> dict[str, Any]:
     editable = bool(sig.get("editable", False))
     normalized = {"name": sig_name, "editable": editable}
     if editable:
-        for field in ("period", "phase"):
-            if field in sig:
-                raise Exception(
-                    f"pl-waveform: editable signal '{sig_name}' cannot define '{field}'"
-                )
+        if "period" in sig:
+            normalized["period"] = sig["period"]
+        if "phase" in sig:
+            raise Exception(
+                f"pl-waveform: editable signal '{sig_name}' cannot define 'phase'"
+            )
     else:
         _copy_wave_options(normalized, sig)
 

@@ -115,7 +115,7 @@ def generate(data):
     b_values = random.choices(binary_values, k=8)
     y_values = [
         "1" if a_value == "1" and b_value == "1" else "0"
-        for a_value, b_value in zip(a_values[1::2], b_values[1::2])
+        for a_value, b_value in zip(a_values, b_values)
     ]
 
     data["params"]["and_signals"] = [
@@ -126,6 +126,7 @@ def generate(data):
             "name": "Y",
             "editable": True,
             "values": y_values,
+            "period": 0.5,
         },
     ]
 

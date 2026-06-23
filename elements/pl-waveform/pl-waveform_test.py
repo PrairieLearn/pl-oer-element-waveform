@@ -417,6 +417,31 @@ def test_question_render_exposes_editable_cell_metadata() -> None:
     assert [cell["period"] for cell in editable_cells] == [1, 1]
 
 
+def test_editable_rows_support_period_metadata_and_duration() -> None:
+    element_html = '<pl-waveform answers-name="half" input-mode="text"></pl-waveform>'
+    data = _base_data(
+        [
+            {"name": "clk", "editable": False, "wave": "lP"},
+            {
+                "name": "Y",
+                "editable": True,
+                "values": ["0", "1", "1", "0"],
+                "period": 0.5,
+            },
+        ]
+    )
+
+    pl_waveform.prepare(element_html, data)
+    rendered = _render(element_html, data)
+    waveform = json.loads(rendered["wavedrom_json"])
+    editable_cells = rendered["editable_rows"][0]["cells"]
+    row_model = json.loads(rendered["editable_row_models_json"])[0]
+
+    assert waveform["signal"][1]["period"] == 0.5
+    assert [cell["period"] for cell in editable_cells] == [0.5, 0.5, 0.5, 0.5]
+    assert row_model["period"] == 0.5
+
+
 def test_text_mode_metadata_supports_single_and_multicharacter_values() -> None:
     element_html = '<pl-waveform answers-name="decode" input-mode="text"></pl-waveform>'
     data = _base_data(
@@ -509,10 +534,6 @@ def test_hex_allowed_values_grade_case_insensitively_and_render_as_bus() -> None
             "only integer 0 and 1",
         ),
         (
-            {"name": "D", "editable": True, "values": ["0", "1"], "period": 0.5},
-            "cannot define 'period'",
-        ),
-        (
             {"name": "D", "editable": True, "values": ["0", "1"], "phase": 0.5},
             "cannot define 'phase'",
         ),
@@ -581,4 +602,4 @@ def test_waveform_demo_signal_sets_match_the_current_element_contract() -> None:
         )
 
     assert validated == 8
-    assert answer_keys == 57
+    assert answer_keys == 61
