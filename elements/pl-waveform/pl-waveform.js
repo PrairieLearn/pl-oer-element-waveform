@@ -19,17 +19,16 @@ $(document).ready(function () {
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(function () {
             $('.pl-waveform').each(function () {
-                removeOverlays(this, '.pl-waveform-feedback-overlay');
-                removeOverlays(this, '.pl-waveform-diff-marker');
-                removeOverlays(this, '.pl-waveform-row-score-badge');
-                removeOverlays(this, '.pl-waveform-element-score-badge');
-                removeOverlays(this, '.pl-waveform-parse-error');
-                removeOverlays(this, '.pl-waveform-cell-score-badge');
-                removeOverlays(this, '.pl-waveform-input-hint');
-                initContainer(this);
+                reinitContainer(this);
             });
         }, 150);
     });
+
+    $(document).on('shown.bs.collapse shown.bs.tab shown.bs.modal', function (event) {
+        initVisibleWaveforms(event.target);
+    });
+
+    observePendingWaveformVisibility();
 });
 
 
@@ -81,7 +80,7 @@ function getAllowedValues(controlOrRow) {
     }
 }
 
-/** Convert SVG-local coordinates into page coordinates. */
+/** Convert element-local coordinates into SVG viewport coordinates. */
 function toSVGPixels(svg, el, localX, localY) {
     try {
         var pt = svg.createSVGPoint();
@@ -94,6 +93,19 @@ function toSVGPixels(svg, el, localX, localY) {
     } catch (e) {
         return null;
     }
+}
+
+/** Convert SVG-local coordinates into container-local coordinates. */
+function toContainerPixels(svg, container, el, localX, localY) {
+    var pt = toSVGPixels(svg, el, localX, localY);
+    if (!pt) return null;
+
+    var svgRect = svg.getBoundingClientRect();
+    var containerRect = container.getBoundingClientRect();
+    return {
+        x: pt.x + svgRect.left - containerRect.left,
+        y: pt.y + svgRect.top - containerRect.top
+    };
 }
 
 /** Measure tick and signal positions from the rendered WaveDrom SVG. */
@@ -114,7 +126,7 @@ function measureSVGPositions(container, signalNames) {
         if (/^\d+$/.test(txt)) {
             try {
                 var bbox = t.getBBox();
-                var pt = toSVGPixels(svg, t, bbox.x + bbox.width / 2, bbox.y);
+                var pt = toContainerPixels(svg, container, t, bbox.x + bbox.width / 2, bbox.y);
                 var tickNum = parseInt(txt, 10);
                 if (pt && (tickYMap[tickNum] === undefined || pt.y < tickYMap[tickNum])) {
                     tickXMap[tickNum] = pt.x;
@@ -127,7 +139,7 @@ function measureSVGPositions(container, signalNames) {
         if (signalSet.has(txt)) {
             try {
                 var bbox2 = t.getBBox();
-                var pt2 = toSVGPixels(svg, t, bbox2.x, bbox2.y + bbox2.height / 2);
+                var pt2 = toContainerPixels(svg, container, t, bbox2.x, bbox2.y + bbox2.height / 2);
                 if (pt2) signalYMap[txt] = pt2.y;
 
                 var labelRect = t.getBoundingClientRect();
@@ -138,8 +150,8 @@ function measureSVGPositions(container, signalNames) {
                 var lane = t.closest('[id^="wavelane_"]');
                 if (lane && !signalBoundsMap[txt]) {
                     var laneBox = lane.getBBox();
-                    var top = toSVGPixels(svg, lane, laneBox.x, laneBox.y);
-                    var bottom = toSVGPixels(svg, lane, laneBox.x, laneBox.y + laneBox.height);
+                    var top = toContainerPixels(svg, container, lane, laneBox.x, laneBox.y);
+                    var bottom = toContainerPixels(svg, container, lane, laneBox.x, laneBox.y + laneBox.height);
                     if (top && bottom) {
                         labelBounds.top = Math.min(labelBounds.top, top.y, bottom.y);
                         labelBounds.bottom = Math.max(labelBounds.bottom, top.y, bottom.y);
@@ -179,6 +191,90 @@ function removeOverlays(container, selector) {
     Array.from(container.querySelectorAll(selector)).forEach(function (el) {
         el.remove();
     });
+}
+
+/** Remove all generated overlays from a waveform container. */
+function clearGeneratedOverlays(container) {
+    removeOverlays(container, '.pl-waveform-feedback-overlay');
+    removeOverlays(container, '.pl-waveform-diff-marker');
+    removeOverlays(container, '.pl-waveform-row-score-badge');
+    removeOverlays(container, '.pl-waveform-element-score-badge');
+    removeOverlays(container, '.pl-waveform-parse-error');
+    removeOverlays(container, '.pl-waveform-parse-error-summary');
+    removeOverlays(container, '.pl-waveform-cell-score-badge');
+    removeOverlays(container, '.pl-waveform-input-hint');
+}
+
+/** Return whether a waveform can currently be measured. */
+function isMeasurableWaveform(container) {
+    if (!container || !container.isConnected) return false;
+
+    var rect = container.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return false;
+
+    var svg = container.querySelector('svg');
+    if (!svg) return true;
+
+    var svgRect = svg.getBoundingClientRect();
+    return svgRect.width > 0 && svgRect.height > 0;
+}
+
+/** Mark a hidden waveform for initialization once it becomes visible. */
+function deferUntilVisible(container) {
+    container.setAttribute('data-pl-waveform-pending-init', 'true');
+
+    if (typeof ResizeObserver !== 'undefined' && !container._plWaveformResizeObserver) {
+        container._plWaveformResizeObserver = new ResizeObserver(function () {
+            if (isMeasurableWaveform(container)) {
+                reinitContainer(container);
+            }
+        });
+        container._plWaveformResizeObserver.observe(container);
+    }
+}
+
+/** Initialize all measurable waveforms inside a root node. */
+function initVisibleWaveforms(root) {
+    var scope = root || document;
+    var containers = [];
+
+    if (scope.classList && scope.classList.contains('pl-waveform')) {
+        containers.push(scope);
+    }
+    containers = containers.concat(Array.from(scope.querySelectorAll ? scope.querySelectorAll('.pl-waveform') : []));
+
+    containers.forEach(function (container) {
+        if (container.getAttribute('data-pl-waveform-pending-init') === 'true' || isMeasurableWaveform(container)) {
+            reinitContainer(container);
+        }
+    });
+}
+
+/** Watch for hidden panels becoming visible when no framework event fires. */
+function observePendingWaveformVisibility() {
+    if (typeof MutationObserver === 'undefined') return;
+
+    var timer = null;
+    var observer = new MutationObserver(function () {
+        if (!document.querySelector('.pl-waveform[data-pl-waveform-pending-init="true"]')) return;
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+            initVisibleWaveforms(document);
+        }, 50);
+    });
+
+    observer.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'hidden'],
+        childList: true,
+        subtree: true
+    });
+}
+
+/** Clear generated UI and initialize a waveform from current geometry. */
+function reinitContainer(container) {
+    clearGeneratedOverlays(container);
+    initContainer(container);
 }
 
 /** Parse a slot period, falling back to a default when needed. */
@@ -696,13 +792,14 @@ function bindTextInputValidation() {
 
     $(document).on('input', '.pl-waveform-proxy[data-allowed-values]', function () {
         if (!isAllowedTextInputPrefix(this, this.value)) {
-            this.value = '';
             rejectTextInputValue(this);
+        } else {
+            clearTextInputParseError(this);
         }
         updateQuestionWaveDrom(this.closest('.pl-waveform'));
     });
 
-    $(document).on('change blur', '.pl-waveform-proxy[data-allowed-values]', function () {
+    $(document).on('blur', '.pl-waveform-proxy[data-allowed-values]', function () {
         normalizeTextInputOnFocusChange(this);
     });
 }
@@ -744,17 +841,19 @@ function normalizeTextInputOnFocusChange(input) {
     var normalizedRaw = normalizeRawValue(input.value);
     if (normalizedRaw === '') {
         input.value = '';
+        clearTextInputParseError(input);
         updateQuestionWaveDrom(input.closest('.pl-waveform'));
         return;
     }
 
     var normalized = normalizeEditableValue(input.value, getAllowedValues(input));
     if (normalized === '') {
-        rejectTextInputValue(input);
+        showTextInputParseError(input, invalidTextInputMessage(input));
         updateQuestionWaveDrom(input.closest('.pl-waveform'));
         return;
     }
 
+    clearTextInputParseError(input);
     if (input.value !== normalized) {
         input.value = normalized;
         updateQuestionWaveDrom(input.closest('.pl-waveform'));
@@ -769,6 +868,44 @@ function rejectTextInputValue(input) {
     input._plWaveformRejectTimer = setTimeout(function () {
         input.classList.remove('pl-waveform-input-rejected');
     }, 700);
+}
+
+/** Return the invalid-value message for a text input. */
+function invalidTextInputMessage(input) {
+    return 'Invalid value. Expected one of: ' + getAllowedValues(input).join(', ') + '.';
+}
+
+/** Return an existing parse-error badge for a text input. */
+function getTextInputParseErrorBadge(input) {
+    var container = input && input.closest('.pl-waveform');
+    var key = input && getControlKey(input);
+    if (!container || !key) return null;
+    return Array.from(container.querySelectorAll('.pl-waveform-parse-error')).find(function (badge) {
+        return badge.getAttribute('data-key') === key;
+    }) || null;
+}
+
+/** Remove persistent parse-error styling from a text input. */
+function clearTextInputParseError(input) {
+    if (!input) return;
+    input.classList.remove('pl-waveform-control-error');
+    var badge = getTextInputParseErrorBadge(input);
+    if (badge) badge.remove();
+}
+
+/** Mark a text input with the same parse-error badge used after submission. */
+function showTextInputParseError(input, message) {
+    if (!input) return;
+    var container = input.closest('.pl-waveform');
+    if (!container) return;
+
+    clearTextInputParseError(input);
+    input.classList.add('pl-waveform-control-error');
+
+    var badge = createParseErrorBadge(getControlKey(input), message);
+    positionParseErrorBadge(container, input, badge);
+    container.appendChild(badge);
+    showTimedTextInputHint(input, 1000);
 }
 
 /** Show a hint for a limited amount of time. */
@@ -1043,6 +1180,13 @@ function positionTextInputs(container) {
 
 /** Initialize a waveform container for its current panel state. */
 function initContainer(container) {
+    if (!isMeasurableWaveform(container)) {
+        deferUntilVisible(container);
+        return;
+    }
+
+    container.removeAttribute('data-pl-waveform-pending-init');
+
     var panel = container.getAttribute('data-panel') || '';
     var inputMode = getInputMode(container);
 
@@ -1080,7 +1224,6 @@ function appendCellOverlay(container, m, signalName, cycleNum, className, absInd
 
     var overlay = document.createElement('div');
     overlay.className = 'pl-waveform-feedback-overlay pl-waveform-cell-feedback-overlay ' + className;
-    if (text) overlay.textContent = text;
     if (title) {
         overlay.title = title;
         overlay.setAttribute('aria-label', title);
@@ -1093,6 +1236,17 @@ function appendCellOverlay(container, m, signalName, cycleNum, className, absInd
     overlay.style.top = Math.round(rowY.top) + 'px';
     overlay.style.width = Math.round(overlayW) + 'px';
     overlay.style.height = Math.round(rowY.height) + 'px';
+
+    if (text) {
+        var badge = document.createElement('span');
+        badge.className = 'pl-waveform-cell-score-badge pl-waveform-cell-score-badge-corner ' +
+            (className.indexOf('pl-waveform-feedback-correct') !== -1
+                ? 'pl-waveform-cell-score-correct'
+                : 'pl-waveform-cell-score-incorrect');
+        badge.textContent = text;
+        badge.setAttribute('aria-hidden', 'true');
+        overlay.appendChild(badge);
+    }
 
     container.appendChild(overlay);
 }
@@ -1137,43 +1291,148 @@ function renderDiffMarkers(container) {
 // Question panel: parse error overlays
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Render parse-error badges over invalid question controls. */
+/** Create the exclamation badge used for parse errors. */
+function createParseErrorBadge(key, message) {
+    var badge = document.createElement('div');
+    badge.className = 'pl-waveform-parse-error';
+    badge.setAttribute('data-key', key);
+    badge.textContent = '!';
+    badge.title = message;
+    badge.setAttribute('aria-label', message);
+    return badge;
+}
+
+/** Return a parse-error message for an answer key. */
+function parseErrorMessage(parseErrors, key) {
+    var error = parseErrors[key];
+    if (!error) return '';
+    if (typeof error === 'string') return error;
+    return error.message || '';
+}
+
+/** Position a parse-error badge over the top-right corner of a control. */
+function positionParseErrorBadge(container, control, badge) {
+    var badgeSize = 14;
+    var containerRect = container.getBoundingClientRect();
+    var controlRect = control.getBoundingClientRect();
+    var relL = controlRect.left - containerRect.left;
+    var relT = controlRect.top - containerRect.top;
+
+    badge.style.left = Math.round(relL + controlRect.width - badgeSize / 2) + 'px';
+    badge.style.top = Math.round(relT - badgeSize / 2) + 'px';
+    badge.style.width = badgeSize + 'px';
+    badge.style.height = badgeSize + 'px';
+}
+
+/** Return the vertical midpoint of editable signal rows. */
+function editableSignalMidY(m, editableSignals, fallbackY) {
+    var yVals = m
+        ? editableSignals
+            .map(function (signalName) { return m.signalYMap[signalName]; })
+            .filter(function (y) { return y !== undefined; })
+        : [];
+    return yVals.length > 0
+        ? yVals.reduce(function (a, b) { return a + b; }, 0) / yVals.length
+        : fallbackY;
+}
+
+/** Return the right edge of the rendered waveform drawing. */
+function waveformRightEdge(container) {
+    var svg = container.querySelector('svg');
+    var containerRect = container.getBoundingClientRect();
+    if (!svg) return containerRect.width;
+    try {
+        var bbox = svg.getBBox();
+        var right = toContainerPixels(svg, container, svg, bbox.x + bbox.width, bbox.y);
+        if (right && Number.isFinite(right.x)) return right.x;
+    } catch (e) { /* fall back to the SVG layout box */ }
+    return svg.getBoundingClientRect().right - containerRect.left;
+}
+
+/** Position a whole-element badge immediately to the right of the drawing. */
+function positionWholeElementBadge(container, badge, m, editableSignals, fallbackY) {
+    var midY = editableSignalMidY(m, editableSignals, fallbackY);
+    badge.style.left = Math.round(waveformRightEdge(container) + 8) + 'px';
+    badge.style.top = Math.round(midY - 14) + 'px';
+}
+
+/** Add the element-level invalid-input warning beside a waveform. */
+function appendParseErrorSummary(container, count, m, editableSignals) {
+    var badge = document.createElement('div');
+    badge.className = 'pl-waveform-parse-error-summary';
+    badge.textContent = 'Input values were invalid';
+    badge.title = count + ' invalid input value' + (count === 1 ? '' : 's');
+
+    positionWholeElementBadge(container, badge, m, editableSignals, 18);
+    container.appendChild(badge);
+}
+
+/** Add a read-only parse-error marker over a waveform cell. */
+function appendParseErrorCellOverlay(container, m, cell, message) {
+    var sigY = m.signalYMap[cell.signal_name];
+    var centreX = getSlotCenterX(m, cell.abs_index, cell.period, cell.cycle_num);
+    if (sigY === undefined || centreX === null) return;
+
+    var overlayW = Math.max(18, m.unitWidth * getSlotPeriod(cell.period, 1) * 0.85);
+    var rowY = getSignalRowBounds(m, cell.signal_name, sigY, 28);
+
+    var overlay = document.createElement('div');
+    overlay.className = 'pl-waveform-feedback-overlay pl-waveform-parse-error-cell-overlay';
+    overlay.title = message;
+    overlay.setAttribute('aria-label', message);
+    overlay.style.left = Math.round(centreX - overlayW / 2) + 'px';
+    overlay.style.top = Math.round(rowY.top) + 'px';
+    overlay.style.width = Math.round(overlayW) + 'px';
+    overlay.style.height = Math.round(rowY.height) + 'px';
+
+    var badge = createParseErrorBadge(cell.key, message);
+    badge.classList.add('pl-waveform-parse-error-corner');
+    overlay.appendChild(badge);
+    container.appendChild(overlay);
+}
+
+/** Render parse-error badges over invalid controls or read-only cells. */
 function renderParseErrorOverlays(container) {
     var parseErrors = {};
+    var parseErrorCells = [];
     try {
         parseErrors = JSON.parse(container.getAttribute('data-parse-errors') || '{}');
+        parseErrorCells = JSON.parse(container.getAttribute('data-parse-error-cells') || '[]');
     } catch (e) { return; }
 
     getQuestionControls(container).forEach(function (control) {
         control.classList.remove('pl-waveform-control-error');
     });
 
-    if (Object.keys(parseErrors).length === 0) return;
+    var errorKeys = Object.keys(parseErrors);
+    if (errorKeys.length === 0) return;
 
-    var BADGE = 14;
-    var containerRect = container.getBoundingClientRect();
-
+    var displayedKeys = {};
     getQuestionControls(container).forEach(function (control) {
         var key = getControlKey(control);
-        if (!parseErrors[key]) return;
+        var message = parseErrorMessage(parseErrors, key);
+        if (!message) return;
 
         control.classList.add('pl-waveform-control-error');
-        var r = control.getBoundingClientRect();
-        var relL = r.left - containerRect.left;
-        var relT = r.top - containerRect.top;
-
-        var badge = document.createElement('div');
-        badge.className = 'pl-waveform-parse-error';
-        badge.textContent = '!';
-        badge.title = parseErrors[key];
-        // Position: half overlapping the top-right corner of the input
-        badge.style.left = Math.round(relL + r.width - BADGE / 2) + 'px';
-        badge.style.top = Math.round(relT - BADGE / 2) + 'px';
-        badge.style.width = BADGE + 'px';
-        badge.style.height = BADGE + 'px';
+        var badge = createParseErrorBadge(key, message);
+        positionParseErrorBadge(container, control, badge);
 
         container.appendChild(badge);
+        displayedKeys[key] = true;
     });
+
+    var editableSignals = getEditableSignals(container);
+    var m = measureSVGPositions(container, editableSignals);
+
+    parseErrorCells.forEach(function (cell) {
+        if (displayedKeys[cell.key] || !m) return;
+        var message = cell.message || parseErrorMessage(parseErrors, cell.key);
+        if (!message) return;
+        appendParseErrorCellOverlay(container, m, cell, message);
+        displayedKeys[cell.key] = true;
+    });
+
+    appendParseErrorSummary(container, errorKeys.length, m, editableSignals);
 }
 
 
@@ -1191,16 +1450,7 @@ function appendElementScoreBadge(container, correct, total, pct, m, editableSign
     badge.textContent = correct + ' out of ' + total;
     badge.title = pct + '% correct';
 
-    var yVals = editableSignals
-        .map(function (signalName) { return m.signalYMap[signalName]; })
-        .filter(function (y) { return y !== undefined; });
-    var midY = yVals.length > 0 ? yVals.reduce(function (a, b) { return a + b; }, 0) / yVals.length : 40;
-    var lastTick = m.tickXMap[m.sortedTicks[m.sortedTicks.length - 1]];
-    var rightEdge = lastTick + m.unitWidth;
-
-    badge.style.left = Math.round(rightEdge + 10) + 'px';
-    badge.style.top = Math.round(midY - 14) + 'px';
-
+    positionWholeElementBadge(container, badge, m, editableSignals, 40);
     container.appendChild(badge);
 }
 

@@ -116,6 +116,11 @@ def _is_binary_allowed_values(allowed_values: list[str]) -> bool:
     return all(_normalize_value(value) in VALID_VALUES for value in allowed_values)
 
 
+def _has_bus_value(values: list[str]) -> bool:
+    """Return whether a values list contains a bus-rendered value."""
+    return any(_normalize_value(value) not in VALID_VALUES for value in values)
+
+
 def _uses_bus_rendering(sig: dict[str, Any]) -> bool:
     """Return whether a signal should be rendered with WaveDrom bus labels."""
     return "data" in sig or not _is_binary_allowed_values(_get_allowed_values(sig))
@@ -159,7 +164,7 @@ def _normalize_values(
     return normalized_values
 
 
-def _encode_values(values: list[str]) -> tuple[str, list[str]]:
+def _encode_values(values: list[str], force_bus: bool = False) -> tuple[str, list[str]]:
     """Convert display values into WaveDrom wave and data fields."""
     wave = []
     data = []
@@ -167,7 +172,7 @@ def _encode_values(values: list[str]) -> tuple[str, list[str]]:
 
     for value in values:
         normalized = _normalize_value(value)
-        encoded = normalized if normalized in VALID_VALUES else "="
+        encoded = "=" if force_bus else normalized if normalized in VALID_VALUES else "="
         if encoded == previous or (encoded == "=" and value == previous):
             wave.append(".")
         else:
@@ -255,7 +260,7 @@ def _normalize_wave_segment(
     if has_values:
         values = _normalize_values(sig[values_field], sig_name, values_field)
         wave, data = _encode_values(values)
-        return {"wave": wave, "data": data, "values": values}
+        return {"wave": wave, "data": data, "values": values, "from_values": True}
 
     raw_wave = sig[wave_field]
     if not isinstance(raw_wave, str) or raw_wave == "":
@@ -264,7 +269,22 @@ def _normalize_wave_segment(
         )
     data = _normalize_data(sig.get(data_field), sig_name, data_field)
     _validate_wave_data_count(raw_wave, data, sig_name, data_field)
-    return {"wave": raw_wave, "data": data, "values": []}
+    return {"wave": raw_wave, "data": data, "values": [], "from_values": False}
+
+
+def _encode_value_segments_as_bus(
+    segments: tuple[dict[str, Any], ...],
+    force_bus: bool,
+) -> tuple[dict[str, Any], ...]:
+    """Re-encode value-authored segments when the whole row is bus-rendered."""
+    encoded_segments = []
+    for segment in segments:
+        if segment.get("from_values"):
+            wave, data = _encode_values(segment["values"], force_bus=force_bus)
+            encoded_segments.append({**segment, "wave": wave, "data": data})
+        else:
+            encoded_segments.append(segment)
+    return tuple(encoded_segments)
 
 
 def _combine_segments(*segments: dict[str, Any]) -> tuple[str, list[str]]:
@@ -363,15 +383,19 @@ def _normalize_signal(sig: Any, idx: int) -> dict[str, Any]:
             allow_wave=False,
         )
         correct_answers = body["values"]
+        normalized["correct_answers"] = correct_answers
+        allowed_values = _get_allowed_values(normalized)
+        force_bus = not _is_binary_allowed_values(allowed_values) or any(
+            _has_bus_value(segment["values"]) for segment in (start, body, end)
+        )
+        start, body, end = _encode_value_segments_as_bus((start, body, end), force_bus)
         correct_wave, correct_data = _combine_segments(start, body, end)
 
-        normalized["correct_answers"] = correct_answers
         normalized["correct_wave"] = correct_wave
         normalized["correct_data"] = correct_data
         normalized["wave"] = start["wave"] + ("x" * len(correct_answers)) + end["wave"]
         _set_data_if_present(normalized, start["data"] + end["data"])
 
-        allowed_values = _get_allowed_values(normalized)
         for answer_idx, value in enumerate(correct_answers, start=1):
             if _canonical_value(value, allowed_values) is None:
                 raise Exception(
@@ -388,6 +412,8 @@ def _normalize_signal(sig: Any, idx: int) -> dict[str, Any]:
         "values",
         required=True,
     )
+    force_bus = any(_has_bus_value(segment["values"]) for segment in (start, body, end))
+    start, body, end = _encode_value_segments_as_bus((start, body, end), force_bus)
     wave, data = _combine_segments(start, body, end)
     normalized["wave"] = wave
     _set_data_if_present(normalized, data)
@@ -967,19 +993,52 @@ def _question_editable_rows(
     return editable_rows, editable_row_models, max_cycles
 
 
-def _question_parse_errors(
+def _parse_error_messages(
     signals: list[dict[str, Any]],
     answers_name: str,
     data: dict[str, Any],
 ) -> dict[str, Any]:
-    """Collect format errors for editable cells in question-panel rendering."""
-    format_errors = data.get("format_errors", {})
+    """Collect format-error messages keyed by editable cell answer name."""
     return {
-        cell["key"]: format_errors[cell["key"]]
+        cell["key"]: cell["message"]
+        for cell in _parse_error_cells(signals, answers_name, data)
+    }
+
+
+def _parse_error_cells(
+    signals: list[dict[str, Any]],
+    answers_name: str,
+    data: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Build parse-error overlay metadata for editable cells."""
+    format_errors = data.get("format_errors", {})
+    return [
+        {
+            "key": cell["key"],
+            "signal_name": _signal_label(sig),
+            "cycle_num": cell["editable_index"],
+            "abs_index": cell["abs_index"],
+            "period": cell["period"],
+            "message": format_errors[cell["key"]],
+        }
         for sig in _editable_signals(signals)
         for cell in _editable_cells(sig, answers_name)
         if cell["key"] in format_errors
-    }
+    ]
+
+
+def _has_partial_scores(
+    signals: list[dict[str, Any]],
+    answers_name: str,
+    data: dict[str, Any],
+) -> bool:
+    """Return whether this element has any cell-level partial scores."""
+    partial_scores = data.get("partial_scores", {})
+    return any(
+        cell["key"] in partial_scores
+        for sig in _editable_signals(signals)
+        for cell in _editable_cells(sig, answers_name)
+    )
 
 
 def _question_cell_scores(
@@ -1037,8 +1096,10 @@ def _question_render_params(
         input_mode,
         from_json=False,
     )
-    parse_errors = _question_parse_errors(signals, answers_name, data)
+    parse_errors = _parse_error_messages(signals, answers_name, data)
+    parse_error_cells = _parse_error_cells(signals, answers_name, data)
     cell_scores = _question_cell_scores(signals, answers_name, data)
+    graded = _has_partial_scores(signals, answers_name, data)
 
     return {
         "question": True,
@@ -1054,9 +1115,13 @@ def _question_render_params(
             [_signal_label(sig) for sig in _editable_signals(signals)]
         ),
         "parse_errors_json": json.dumps(parse_errors),
-        "has_parse_errors": len(parse_errors) > 0,
-        "cell_scores_json": json.dumps(cell_scores),
-        "has_cell_scores": feedback != "none" and len(cell_scores) > 0,
+        "parse_error_cells_json": json.dumps(parse_error_cells),
+        "has_parse_errors": len(parse_error_cells) > 0,
+        "cell_scores_json": json.dumps(cell_scores if graded else []),
+        "has_cell_scores": feedback != "none"
+        and graded
+        and len(parse_error_cells) == 0
+        and len(cell_scores) > 0,
         "uuid": pl.get_uuid(),
     }
 
@@ -1065,11 +1130,17 @@ def _submission_cell_result(
     sig: dict[str, Any],
     cell: dict[str, Any],
     data: dict[str, Any],
+    graded: bool,
 ) -> dict[str, Any]:
     """Build feedback metadata for one submitted cell."""
     allowed_values = _get_allowed_values(sig)
-    score = data["partial_scores"].get(cell["key"], {}).get("score", None)
+    score = (
+        data["partial_scores"].get(cell["key"], {}).get("score", None)
+        if graded
+        else None
+    )
     submitted_raw = data["submitted_answers"].get(cell["key"], None)
+    format_error = data.get("format_errors", {}).get(cell["key"])
     submitted = (
         _answer_value(submitted_raw, from_json=True)
         if submitted_raw is not None
@@ -1087,8 +1158,9 @@ def _submission_cell_result(
         "correct_value": cell["correct_value"],
         "correct": score is not None and score >= 1,
         "incorrect": not is_unanswered and score is not None and score < 1,
-        "invalid": _is_invalid_submission(submitted_raw, allowed_values),
-        "invalid_message": _invalid_value_message(allowed_values),
+        "invalid": format_error is not None
+        or _is_invalid_submission(submitted_raw, allowed_values),
+        "invalid_message": format_error or _invalid_value_message(allowed_values),
         "unanswered": is_unanswered,
     }
 
@@ -1097,6 +1169,7 @@ def _submission_results(
     signals: list[dict[str, Any]],
     answers_name: str,
     data: dict[str, Any],
+    graded: bool,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int, int, int]:
     """Build feedback rows and score totals for the submission panel."""
     feedback_cells = []
@@ -1108,7 +1181,9 @@ def _submission_results(
     for sig in _editable_signals(signals):
         sig_cells = _editable_cells(sig, answers_name)
         max_cycles = max(max_cycles, len(sig_cells))
-        row_cells = [_submission_cell_result(sig, cell, data) for cell in sig_cells]
+        row_cells = [
+            _submission_cell_result(sig, cell, data, graded) for cell in sig_cells
+        ]
         row_correct = sum(1 for cell in row_cells if cell["correct"])
 
         feedback_cells.extend(row_cells)
@@ -1137,11 +1212,15 @@ def _submission_render_params(
     """Build mustache parameters for the submission panel."""
     feedback = pl.get_string_attrib(element, "feedback", FEEDBACK_DEFAULT)
     input_mode = pl.get_string_attrib(element, "input-mode", INPUT_MODE_DEFAULT)
+    parse_errors = _parse_error_messages(signals, answers_name, data)
+    parse_error_cells = _parse_error_cells(signals, answers_name, data)
+    graded = _has_partial_scores(signals, answers_name, data)
     feedback_cells, result_rows, correct_count, total_cells, max_cycles = (
         _submission_results(
             signals,
             answers_name,
             data,
+            graded,
         )
     )
     score_pct = round(100 * correct_count / total_cells) if total_cells > 0 else 0
@@ -1153,17 +1232,23 @@ def _submission_render_params(
         "wavedrom_json": _build_wavedrom(
             _build_submission_signals(signals, data, answers_name), hscale
         ),
-        "cell_scores_json": json.dumps(feedback_cells),
+        "cell_scores_json": json.dumps(feedback_cells if graded else []),
         "editable_signals_json": json.dumps(
             [_signal_label(sig) for sig in _editable_signals(signals)]
         ),
+        "parse_errors_json": json.dumps(parse_errors),
+        "parse_error_cells_json": json.dumps(parse_error_cells),
+        "has_parse_errors": len(parse_error_cells) > 0,
         "correct_count": correct_count,
         "total_cells": total_cells,
         "score_pct": score_pct,
         "correct": score_pct == 100,
         "partial": score_pct if 0 < score_pct < 100 else False,
         "incorrect": score_pct == 0,
-        "has_cell_scores": feedback != "none" and len(feedback_cells) > 0,
+        "has_cell_scores": feedback != "none"
+        and graded
+        and len(parse_error_cells) == 0
+        and len(feedback_cells) > 0,
         "result_rows": result_rows,
         "cycle_headers": [{"cycle_num": idx + 1} for idx in range(max_cycles)],
         "uuid": pl.get_uuid(),
@@ -1241,7 +1326,9 @@ def render(element_html, data):
 def parse(element_html, data):
     element = lxml.html.fragment_fromstring(element_html)
     answers_name = pl.get_string_attrib(element, "answers-name")
+    input_mode = pl.get_string_attrib(element, "input-mode", INPUT_MODE_DEFAULT)
     signals = _get_signals(element, data)
+    format_errors = data.setdefault("format_errors", {})
 
     for sig in _editable_signals(signals):
         allowed_values = _get_allowed_values(sig)
@@ -1253,6 +1340,9 @@ def parse(element_html, data):
                 data["submitted_answers"][cell["key"]] = None
             else:
                 canonical = _canonical_value(val, allowed_values)
+                if canonical is None and input_mode == "text":
+                    format_errors[cell["key"]] = _invalid_value_message(allowed_values)
+                    continue
                 data["submitted_answers"][cell["key"]] = pl.to_json(
                     canonical if canonical is not None else val_normalized
                 )
@@ -1264,9 +1354,14 @@ def grade(element_html, data):
     weight = pl.get_integer_attrib(element, "weight", WEIGHT_DEFAULT)
     signals = _get_signals(element, data)
 
+    if _parse_error_cells(signals, answers_name, data):
+        return
+
     for sig in _editable_signals(signals):
         for cell in _editable_cells(sig, answers_name):
             key = cell["key"]
+            if key in data.get("format_errors", {}):
+                continue
 
             a_tru = pl.from_json(data["correct_answers"].get(key, None))
             if a_tru is None:

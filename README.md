@@ -82,7 +82,7 @@ data["params"]["signals"] = [
 ]
 ```
 
-The values `0`, `1`, `x`, and `z` render as ordinary digital states. Other values are supported, but render as labeled bus boxes. For example, `["0", "ABC", "0xFF"]` displays a low digital state followed by two labeled bus boxes.
+The values `0`, `1`, `x`, and `z` render as ordinary digital states when the row only uses those values. If any value or editable `allowed_values` entry is outside that set, the whole row is rendered as labeled bus boxes, including `0`, `1`, `x`, and `z`.
 
 The element also supports `period` for all rows and `phase` for non-editable rows. These attributes are passed through to WaveDrom. The total row duration (after `period` scaling) must match across rows.
 

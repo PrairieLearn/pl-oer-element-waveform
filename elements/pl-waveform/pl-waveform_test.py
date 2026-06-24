@@ -123,8 +123,8 @@ def test_values_encode_digital_holds_and_bus_labels() -> None:
 
     assert signals[0]["wave"] == "0.1.z.x"
     assert "data" not in signals[0]
-    assert signals[1]["wave"] == "0=.="
-    assert signals[1]["data"] == ["ADDR", "0xFF"]
+    assert signals[1]["wave"] == "==.="
+    assert signals[1]["data"] == ["0", "ADDR", "0xFF"]
 
 
 def test_wave_data_period_and_phase_are_preserved_for_reference_rows() -> None:
@@ -236,6 +236,58 @@ def test_segment_boundaries_use_holds_for_repeated_bus_values() -> None:
     assert signal["correct_data"] == ["IDLE", "LOAD"]
 
 
+def test_bus_values_force_digital_segments_to_render_as_buses() -> None:
+    signals = _normalize(
+        [
+            {
+                "name": "ref",
+                "editable": False,
+                "start_values": ["0"],
+                "values": ["0", "LOAD"],
+                "end_values": ["1"],
+            },
+            {
+                "name": "Q",
+                "editable": True,
+                "start_values": ["0"],
+                "values": ["1", "0"],
+                "allowed_values": ["0", "1", "LOAD"],
+            },
+        ]
+    )
+
+    assert signals[0]["wave"] == "=.=="
+    assert signals[0]["data"] == ["0", "LOAD", "1"]
+    assert signals[1]["wave"] == "=xx"
+    assert signals[1]["data"] == ["0"]
+    assert signals[1]["correct_wave"] == "==="
+    assert signals[1]["correct_data"] == ["0", "1", "0"]
+
+
+def test_submission_renders_digital_answers_as_bus_when_allowed_values_are_bus() -> None:
+    element_html = '<pl-waveform answers-name="bus"></pl-waveform>'
+    data = _base_data(
+        [
+            {
+                "name": "Q",
+                "editable": True,
+                "start_values": ["0"],
+                "values": ["1", "0"],
+                "allowed_values": ["0", "1", "LOAD"],
+            },
+        ],
+        panel="submission",
+        submitted_answers={"bus_Q_1": "1", "bus_Q_2": "0"},
+    )
+
+    _prepare_parse_grade(element_html, data)
+    rendered = _render(element_html, data)
+    waveform = json.loads(rendered["wavedrom_json"])
+
+    assert waveform["signal"][0]["wave"] == "==="
+    assert waveform["signal"][0]["data"] == ["0", "1", "0"]
+
+
 def test_editable_z_is_inferred_as_a_digital_allowed_value() -> None:
     element_html = '<pl-waveform answers-name="tri"></pl-waveform>'
     data = _base_data(
@@ -259,7 +311,7 @@ def test_editable_z_is_inferred_as_a_digital_allowed_value() -> None:
     assert all(score["score"] == 1 for score in data["partial_scores"].values())
 
 
-def test_prepare_parse_grade_scores_and_reports_invalid_cells() -> None:
+def test_text_input_invalid_values_report_format_errors_during_parse() -> None:
     element_html = '<pl-waveform answers-name="timing" input-mode="text"></pl-waveform>'
     data = _base_data(
         [
@@ -278,28 +330,60 @@ def test_prepare_parse_grade_scores_and_reports_invalid_cells() -> None:
         },
     )
 
-    _prepare_parse_grade(element_html, data)
+    pl_waveform.prepare(element_html, data)
+    pl_waveform.parse(element_html, data)
 
+    invalid_message = "Invalid value. Expected one of: 0, 1."
     assert data["correct_answers"] == {
         "timing_Q_1": "1",
         "timing_Q_2": "0",
         "timing_Q_3": "0",
     }
-    assert data["format_errors"] == {}
-    assert data["partial_scores"]["timing_Q_1"]["score"] == 1
-    assert data["partial_scores"]["timing_Q_2"]["score"] == 0
-    assert data["partial_scores"]["timing_Q_3"]["score"] == 1
+    assert data["format_errors"] == {"timing_Q_2": invalid_message}
+    assert data["partial_scores"] == {}
+
+    rendered_question = _render(element_html, data)
+    assert json.loads(rendered_question["parse_errors_json"]) == {
+        "timing_Q_2": invalid_message
+    }
+    assert json.loads(rendered_question["parse_error_cells_json"]) == [
+        {
+            "key": "timing_Q_2",
+            "signal_name": "Q",
+            "cycle_num": 2,
+            "abs_index": 2,
+            "period": 1,
+            "message": invalid_message,
+        }
+    ]
+    assert rendered_question["has_parse_errors"] is True
+    assert rendered_question["has_cell_scores"] is False
+    assert json.loads(rendered_question["cell_scores_json"]) == []
 
     data["panel"] = "submission"
     rendered = _render(element_html, data)
 
-    assert rendered["correct_count"] == 2
+    assert json.loads(rendered["parse_errors_json"]) == {"timing_Q_2": invalid_message}
+    assert json.loads(rendered["parse_error_cells_json"]) == [
+        {
+            "key": "timing_Q_2",
+            "signal_name": "Q",
+            "cycle_num": 2,
+            "abs_index": 2,
+            "period": 1,
+            "message": invalid_message,
+        }
+    ]
+    assert rendered["has_parse_errors"] is True
+    assert rendered["has_cell_scores"] is False
+    assert json.loads(rendered["cell_scores_json"]) == []
+    assert rendered["correct_count"] == 0
     assert rendered["total_cells"] == 3
     invalid_cell = rendered["result_rows"][0]["cells"][1]
     assert invalid_cell["submitted"] == "n"
-    assert invalid_cell["incorrect"] is True
+    assert invalid_cell["incorrect"] is False
     assert invalid_cell["invalid"] is True
-    assert invalid_cell["invalid_message"] == "Invalid value. Expected one of: 0, 1."
+    assert invalid_cell["invalid_message"] == invalid_message
 
 
 def test_unanswered_cells_score_zero_without_invalid_feedback() -> None:
