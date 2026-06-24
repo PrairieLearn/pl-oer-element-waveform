@@ -92,17 +92,14 @@ def _prepare_parse_grade(element_html, data):
     pl_waveform.grade(element_html, data)
 
 
-def test_submission_template_renders_waveform_without_card_or_label_header() -> None:
+def test_submission_template_exposes_read_only_waveform_feedback_metadata() -> None:
     template = (ELEMENT_DIR / "pl-waveform.mustache").read_text()
 
-    assert "pl-waveform-submission-section" not in template
-    assert "pl-waveform-submission-header" not in template
-    assert "pl-waveform-submission-label" not in template
-    assert "{{#label}}" not in template
+    assert 'class="pl-waveform pl-waveform-submission-view"' in template
+    assert 'data-panel="submission"' in template
+    assert 'data-parse-errors="{{parse_errors_json}}"' in template
     assert "data-cell-scores" in template
-    assert "data-feedback-element" not in template
-    assert "data-feedback-rows" not in template
-    assert "fb_table" not in template
+    assert 'type="WaveDrom"' in template
 
 
 def test_values_encode_digital_holds_and_bus_labels() -> None:
@@ -526,6 +523,41 @@ def test_toggle_question_initial_x_matches_toggled_x() -> None:
     assert row_model["cells"][0]["is_x"] is True
 
 
+def test_text_question_initial_x_allowed_still_renders_blank() -> None:
+    element_html = '<pl-waveform answers-name="part5" input-mode="text"></pl-waveform>'
+    data = _base_data(
+        [
+            {"name": "clk", "editable": False, "wave": "lP"},
+            {"name": "Y", "editable": True, "values": ["x"]},
+        ]
+    )
+
+    rendered = _render(element_html, data)
+    editable_cell = rendered["editable_rows"][0]["cells"][0]
+    row_model = json.loads(rendered["editable_row_models_json"])[0]
+
+    assert editable_cell["has_raw_value"] is False
+    assert editable_cell["raw_value"] == ""
+    assert row_model["cells"][0]["value"] == ""
+
+
+def test_parse_clears_stale_format_error_after_valid_submission() -> None:
+    element_html = '<pl-waveform answers-name="part1" input-mode="text"></pl-waveform>'
+    data = _base_data(
+        [
+            {"name": "Q", "editable": True, "values": ["1"]},
+        ],
+        submitted_answers={"part1_Q_1": "1"},
+    )
+    data["format_errors"]["part1_Q_1"] = "old error"
+
+    pl_waveform.prepare(element_html, data)
+    pl_waveform.parse(element_html, data)
+
+    assert data["format_errors"] == {}
+    assert json.loads(data["submitted_answers"]["part1_Q_1"]) == "1"
+
+
 def test_editable_rows_support_period_metadata_and_duration() -> None:
     element_html = '<pl-waveform answers-name="half" input-mode="text"></pl-waveform>'
     data = _base_data(
@@ -716,8 +748,8 @@ def test_invalid_signal_definitions_are_rejected(signal, message) -> None:
         _normalize([signal])
 
 
-def test_old_table_feedback_mode_is_rejected() -> None:
-    element_html = '<pl-waveform answers-name="part1" feedback="table"></pl-waveform>'
+def test_unknown_feedback_mode_is_rejected() -> None:
+    element_html = '<pl-waveform answers-name="part1" feedback="summary"></pl-waveform>'
     data = _base_data([{"name": "D", "editable": False, "values": [0]}])
 
     with pytest.raises(Exception, match="invalid feedback"):

@@ -116,11 +116,6 @@ def _is_binary_allowed_values(allowed_values: list[str]) -> bool:
     return all(_normalize_value(value) in VALID_VALUES for value in allowed_values)
 
 
-def _has_bus_value(values: list[str]) -> bool:
-    """Return whether a values list contains a bus-rendered value."""
-    return any(_normalize_value(value) not in VALID_VALUES for value in values)
-
-
 def _uses_bus_rendering(sig: dict[str, Any]) -> bool:
     """Return whether a signal should be rendered with WaveDrom bus labels."""
     return "data" in sig or not _is_binary_allowed_values(_get_allowed_values(sig))
@@ -184,13 +179,6 @@ def _encode_values(values: list[str], force_bus: bool = False) -> tuple[str, lis
                 previous = encoded
 
     return "".join(wave), data
-
-
-def _normalize_data(data: Any, sig_name: str, field_name: str) -> list[str]:
-    """Normalize a WaveDrom data list into display strings."""
-    if data is None:
-        return []
-    return _normalize_values(data, sig_name, field_name)
 
 
 def _bus_data_count(wave: str) -> int:
@@ -267,7 +255,9 @@ def _normalize_wave_segment(
         raise Exception(
             f"pl-waveform: signal '{sig_name}' must define '{wave_field}' as a non-empty string"
         )
-    data = _normalize_data(sig.get(data_field), sig_name, data_field)
+    data = []
+    if sig.get(data_field) is not None:
+        data = _normalize_values(sig.get(data_field), sig_name, data_field)
     _validate_wave_data_count(raw_wave, data, sig_name, data_field)
     return {"wave": raw_wave, "data": data, "values": [], "from_values": False}
 
@@ -316,13 +306,6 @@ def _set_data_if_present(sig: dict[str, Any], data: list[str]) -> None:
         sig.pop("data", None)
 
 
-def _copy_wave_options(normalized: dict[str, Any], sig: dict[str, Any]) -> None:
-    """Copy WaveDrom options that are passed through by the element."""
-    for field in ("period", "phase"):
-        if field in sig:
-            normalized[field] = sig[field]
-
-
 def _normalize_signal(sig: Any, idx: int) -> dict[str, Any]:
     """Normalize one signal definition while preserving WaveDrom fields."""
     if not isinstance(sig, dict):
@@ -353,7 +336,9 @@ def _normalize_signal(sig: Any, idx: int) -> dict[str, Any]:
                 f"pl-waveform: editable signal '{signal_key}' cannot define 'phase'"
             )
     else:
-        _copy_wave_options(normalized, sig)
+        for field in ("period", "phase"):
+            if field in sig:
+                normalized[field] = sig[field]
 
     start = _normalize_wave_segment(
         sig,
@@ -385,8 +370,12 @@ def _normalize_signal(sig: Any, idx: int) -> dict[str, Any]:
         correct_answers = body["values"]
         normalized["correct_answers"] = correct_answers
         allowed_values = _get_allowed_values(normalized)
+        # If any allowed or authored value is bus-like, render the whole row as
+        # buses so digital-looking answers are not mixed with wire states.
         force_bus = not _is_binary_allowed_values(allowed_values) or any(
-            _has_bus_value(segment["values"]) for segment in (start, body, end)
+            _normalize_value(value) not in VALID_VALUES
+            for segment in (start, body, end)
+            for value in segment["values"]
         )
         start, body, end = _encode_value_segments_as_bus((start, body, end), force_bus)
         correct_wave, correct_data = _combine_segments(start, body, end)
@@ -412,7 +401,11 @@ def _normalize_signal(sig: Any, idx: int) -> dict[str, Any]:
         "values",
         required=True,
     )
-    force_bus = any(_has_bus_value(segment["values"]) for segment in (start, body, end))
+    force_bus = any(
+        _normalize_value(value) not in VALID_VALUES
+        for segment in (start, body, end)
+        for value in segment["values"]
+    )
     start, body, end = _encode_value_segments_as_bus((start, body, end), force_bus)
     wave, data = _combine_segments(start, body, end)
     normalized["wave"] = wave
@@ -492,11 +485,6 @@ def _get_allowed_values(sig: dict[str, Any]) -> list[str]:
     return allowed_values
 
 
-def _format_allowed_values_hint(allowed_values: list[str]) -> str:
-    """Build the text-input hint for allowed values."""
-    return f"Type one of: {', '.join(allowed_values)}"
-
-
 def _answer_value(raw: Any, from_json: bool = True) -> str | None:
     """Decode and display a raw submitted answer value."""
     if raw is None:
@@ -505,11 +493,6 @@ def _answer_value(raw: Any, from_json: bool = True) -> str | None:
     if from_json:
         value = pl.from_json(raw)
     return _display_value(value)
-
-
-def _submitted_answer_value(raw: Any) -> str | None:
-    """Normalize a JSON-encoded submitted answer value."""
-    return _normalize_value(_answer_value(raw, from_json=True))
 
 
 def _canonical_answer_value(
@@ -523,7 +506,7 @@ def _canonical_answer_value(
 
 def _is_invalid_submission(raw: Any, allowed_values: list[str]) -> bool:
     """Return whether a submitted value is outside the allowed values."""
-    submitted = _submitted_answer_value(raw)
+    submitted = _normalize_value(_answer_value(raw, from_json=True))
     return submitted is not None and submitted not in _allowed_value_map(allowed_values)
 
 
@@ -764,13 +747,6 @@ def _build_question_signals(
     return result
 
 
-def _build_correct_signals(
-    signals: list[dict[str, Any]], answers_name: str
-) -> list[dict[str, Any]]:
-    """Build the answer-panel rendering for all signals."""
-    return [_build_correct_rendered_signal(sig, answers_name) for sig in signals]
-
-
 def _build_editable_row_model(
     sig: dict[str, Any],
     answers_name: str,
@@ -958,7 +934,7 @@ def _question_cell_model(
         "text_mode": input_mode == "text",
         "toggle_value": canonical_raw if canonical_raw is not None else "",
         "allowed_values_json": json.dumps(allowed_values),
-        "text_input_hint": _format_allowed_values_hint(allowed_values),
+        "text_input_hint": f"Type one of: {', '.join(allowed_values)}",
         "text_input_maxlength": max(len(value) for value in allowed_values),
         "aria_label": f"{_signal_label(sig)} cycle {cell['editable_index']} answer",
     }
@@ -1327,7 +1303,8 @@ def render(element_html, data):
         html_params = {
             "answer": True,
             "wavedrom_json": _build_wavedrom(
-                _build_correct_signals(signals, answers_name), hscale
+                [_build_correct_rendered_signal(sig, answers_name) for sig in signals],
+                hscale,
             ),
             "diff_json": json.dumps(_answer_diff_cells(signals, answers_name, data)),
             "editable_signals_json": json.dumps(

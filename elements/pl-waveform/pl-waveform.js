@@ -39,6 +39,23 @@ $(document).ready(function () {
 var DEFAULT_ALLOWED_VALUES = ['0', '1', 'x'];
 var DEFAULT_SIGNAL_LABEL_HEIGHT = 22;
 var SIGNAL_ROW_VERTICAL_PADDING = 16;
+var FEEDBACK_STATE_CLASSES = [
+    'pl-waveform-correct',
+    'pl-waveform-incorrect',
+    'pl-waveform-unanswered',
+    'pl-waveform-control-error',
+    'pl-waveform-invalid'
+];
+var GENERATED_OVERLAY_SELECTORS = [
+    '.pl-waveform-feedback-overlay',
+    '.pl-waveform-diff-marker',
+    '.pl-waveform-row-score-badge',
+    '.pl-waveform-element-score-badge',
+    '.pl-waveform-parse-error',
+    '.pl-waveform-parse-error-summary',
+    '.pl-waveform-cell-score-badge',
+    '.pl-waveform-input-hint'
+];
 
 /** Normalize a raw value for comparison. */
 function normalizeRawValue(value) {
@@ -195,14 +212,14 @@ function removeOverlays(container, selector) {
 
 /** Remove all generated overlays from a waveform container. */
 function clearGeneratedOverlays(container) {
-    removeOverlays(container, '.pl-waveform-feedback-overlay');
-    removeOverlays(container, '.pl-waveform-diff-marker');
-    removeOverlays(container, '.pl-waveform-row-score-badge');
-    removeOverlays(container, '.pl-waveform-element-score-badge');
-    removeOverlays(container, '.pl-waveform-parse-error');
-    removeOverlays(container, '.pl-waveform-parse-error-summary');
-    removeOverlays(container, '.pl-waveform-cell-score-badge');
-    removeOverlays(container, '.pl-waveform-input-hint');
+    GENERATED_OVERLAY_SELECTORS.forEach(function (selector) {
+        removeOverlays(container, selector);
+    });
+}
+
+/** Clear feedback state classes from a question control. */
+function clearFeedbackClasses(control) {
+    control.classList.remove.apply(control.classList, FEEDBACK_STATE_CLASSES);
 }
 
 /** Return whether a waveform can currently be measured. */
@@ -376,7 +393,7 @@ function clearScoreFeedbackState(container) {
     removeOverlays(container, '.pl-waveform-cell-score-badge');
 
     getQuestionControls(container).forEach(function (control) {
-        control.classList.remove('pl-waveform-correct', 'pl-waveform-incorrect', 'pl-waveform-unanswered', 'pl-waveform-control-error', 'pl-waveform-invalid');
+        clearFeedbackClasses(control);
     });
 
     Array.from(container.querySelectorAll('.pl-waveform-editor-row')).forEach(function (row) {
@@ -1252,6 +1269,29 @@ function appendCellOverlay(container, m, signalName, cycleNum, className, absInd
     container.appendChild(overlay);
 }
 
+/** Return the tooltip text for a scored cell. */
+function cellFeedbackTitle(cell) {
+    if (cell.correct) return 'correct';
+    if (cell.invalid) return cell.invalid_message || 'invalid';
+    return cell.unanswered ? 'unanswered' : 'incorrect';
+}
+
+/** Create the badge used for cell-level feedback. */
+function createCellScoreBadge(cell, corner) {
+    var badge = document.createElement(corner ? 'span' : 'div');
+    badge.className = 'pl-waveform-cell-score-badge ' +
+        (corner ? 'pl-waveform-cell-score-badge-corner ' : '') +
+        (cell.correct ? 'pl-waveform-cell-score-correct' : 'pl-waveform-cell-score-incorrect');
+    badge.textContent = cell.correct ? '\u2713' : '\u2717';
+    badge.title = cellFeedbackTitle(cell);
+    if (corner) {
+        badge.setAttribute('aria-hidden', 'true');
+    } else {
+        badge.setAttribute('aria-label', badge.title);
+    }
+    return badge;
+}
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Answer panel: diff markers
@@ -1482,21 +1522,13 @@ function renderScoreFeedback(container) {
                 var cell = toggleScoreMap[mapKey];
                 if (!cell) return;
 
-                control.classList.remove('pl-waveform-correct', 'pl-waveform-incorrect', 'pl-waveform-unanswered', 'pl-waveform-control-error', 'pl-waveform-invalid');
+                clearFeedbackClasses(control);
                 if (cell.correct) control.classList.add('pl-waveform-correct');
                 else if (cell.invalid) control.classList.add('pl-waveform-invalid');
                 else if (cell.incorrect) control.classList.add('pl-waveform-incorrect');
                 else if (cell.unanswered) control.classList.add('pl-waveform-unanswered');
 
-                var badge = document.createElement('span');
-                var badgeStateClass = cell.correct
-                    ? 'pl-waveform-cell-score-correct'
-                    : 'pl-waveform-cell-score-incorrect';
-                badge.className = 'pl-waveform-cell-score-badge pl-waveform-cell-score-badge-corner ' + badgeStateClass;
-                badge.textContent = cell.correct ? '\u2713' : '\u2717';
-                badge.title = cell.correct ? 'correct' : (cell.invalid ? (cell.invalid_message || 'invalid') : (cell.unanswered ? 'unanswered' : 'incorrect'));
-                badge.setAttribute('aria-hidden', 'true');
-                control.appendChild(badge);
+                control.appendChild(createCellScoreBadge(cell, true));
             });
             return;
         }
@@ -1514,7 +1546,7 @@ function renderScoreFeedback(container) {
             textControls.forEach(function (inp) {
                 var mapKey = inp.getAttribute('data-signal') + '|' + inp.getAttribute('data-cycle');
                 var cell = scoreMap[mapKey];
-                inp.classList.remove('pl-waveform-correct', 'pl-waveform-incorrect', 'pl-waveform-unanswered', 'pl-waveform-control-error', 'pl-waveform-invalid');
+                clearFeedbackClasses(inp);
                 if (!cell) return;
                 if (cell.correct) inp.classList.add('pl-waveform-correct');
                 else if (cell.invalid) inp.classList.add('pl-waveform-invalid');
@@ -1525,14 +1557,7 @@ function renderScoreFeedback(container) {
                 var relL = r.left - containerRect.left;
                 var relT = r.top - containerRect.top;
 
-                var badge = document.createElement('div');
-                badge.className = 'pl-waveform-cell-score-badge ' +
-                    (cell.correct
-                        ? 'pl-waveform-cell-score-correct'
-                        : 'pl-waveform-cell-score-incorrect');
-                badge.textContent = cell.correct ? '\u2713' : '\u2717';
-                badge.setAttribute('aria-label', cell.correct ? 'correct' : (cell.invalid ? (cell.invalid_message || 'invalid') : (cell.unanswered ? 'unanswered' : 'incorrect')));
-                badge.title = cell.correct ? 'correct' : (cell.invalid ? (cell.invalid_message || 'invalid') : (cell.unanswered ? 'unanswered' : 'incorrect'));
+                var badge = createCellScoreBadge(cell, false);
                 badge.style.left = Math.round(relL + r.width - BADGE / 2) + 'px';
                 badge.style.top = Math.round(relT - BADGE / 2) + 'px';
                 badge.style.width = BADGE + 'px';
