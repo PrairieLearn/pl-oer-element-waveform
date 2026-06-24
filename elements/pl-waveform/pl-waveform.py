@@ -1338,11 +1338,13 @@ def parse(element_html, data):
 
             if val_normalized is None:
                 data["submitted_answers"][cell["key"]] = None
+                format_errors[cell["key"]] = _invalid_value_message(allowed_values)
             else:
                 canonical = _canonical_value(val, allowed_values)
                 if canonical is None and input_mode == "text":
                     format_errors[cell["key"]] = _invalid_value_message(allowed_values)
                     continue
+                format_errors.pop(cell["key"], None)
                 data["submitted_answers"][cell["key"]] = pl.to_json(
                     canonical if canonical is not None else val_normalized
                 )

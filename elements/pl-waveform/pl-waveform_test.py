@@ -386,7 +386,7 @@ def test_text_input_invalid_values_report_format_errors_during_parse() -> None:
     assert invalid_cell["invalid_message"] == invalid_message
 
 
-def test_unanswered_cells_score_zero_without_invalid_feedback() -> None:
+def test_blank_cells_report_format_errors_during_parse() -> None:
     element_html = '<pl-waveform answers-name="part1"></pl-waveform>'
     data = _base_data(
         [
@@ -409,14 +409,20 @@ def test_unanswered_cells_score_zero_without_invalid_feedback() -> None:
     _prepare_parse_grade(element_html, data)
     rendered = _render(element_html, data)
 
-    assert rendered["correct_count"] == 1
+    invalid_message = "Invalid value. Expected one of: 0, 1."
+    assert data["format_errors"] == {"part1_Q_2": invalid_message}
+    assert data["partial_scores"] == {}
+    assert rendered["has_parse_errors"] is True
+    assert rendered["has_cell_scores"] is False
+    assert json.loads(rendered["parse_errors_json"]) == {"part1_Q_2": invalid_message}
+    assert rendered["correct_count"] == 0
     assert rendered["total_cells"] == 3
-    assert rendered["score_pct"] == 33
     cells = rendered["result_rows"][0]["cells"]
-    assert cells[0]["correct"] is True
+    assert cells[0]["correct"] is False
     assert cells[1]["unanswered"] is True
-    assert cells[1]["invalid"] is False
-    assert cells[2]["incorrect"] is True
+    assert cells[1]["invalid"] is True
+    assert cells[1]["incorrect"] is False
+    assert cells[2]["incorrect"] is False
 
 
 def test_submission_feedback_uses_question_panel_score_metadata() -> None:

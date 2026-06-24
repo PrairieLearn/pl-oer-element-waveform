@@ -1107,6 +1107,7 @@ function setRenderedCellValue(control, value, options) {
     }
     control.setAttribute('data-touched', touched ? 'true' : 'false');
     updateHitTargetMetadata(control, normalized);
+    control.classList.remove('pl-waveform-control-error', 'pl-waveform-invalid');
 
     if (container) {
         updateQuestionWaveDrom(container);

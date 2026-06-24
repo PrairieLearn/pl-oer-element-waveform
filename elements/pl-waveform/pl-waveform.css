@@ -39,7 +39,7 @@
     padding: 1px 2px;
     border: 1px solid rgba(108, 117, 125, 0.55);
     border-radius: 3px;
-    background-color: rgba(255, 255, 255, 0.9);
+    background-color: #fff;
     color: #212529;
     caret-color: #0d6efd;
     font-family: monospace;
@@ -59,7 +59,7 @@
 
 .pl-waveform-proxy:focus {
     border-color: #0d6efd;
-    background-color: rgba(255, 255, 255, 0.96);
+    background-color: #fff;
     box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
 }
 
@@ -95,13 +95,21 @@
 
 .pl-waveform-question-control.pl-waveform-control-error {
     border-color: #ffc107 !important;
-    background-color: #fff3cd !important;
+    background-color: var(--pl-waveform-interactive-warning) !important;
 }
 
 .pl-waveform-question-control.pl-waveform-invalid {
     border-color: #ffc107 !important;
-    background: #fff3cd !important;
+    background: var(--pl-waveform-interactive-warning) !important;
     background-image: none !important;
+}
+
+.pl-waveform-proxy.pl-waveform-control-error {
+    background-color: #fff3cd !important;
+}
+
+.pl-waveform-proxy.pl-waveform-invalid {
+    background: #fff3cd !important;
 }
 
 .pl-waveform-question-control:disabled {
