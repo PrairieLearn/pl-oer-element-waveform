@@ -80,18 +80,18 @@
     <hr>
     <h4>Part 5: High-Impedance Values and Custom Allowed Values</h4>
     <p>
-        Complete <code>Y</code>. This part uses <code>z</code> in the
-        editable <code>values</code> list and customizes
-        <code>allowed_values</code> so toggle mode cycles through the
-        high-impedance state. It also uses <code>feedback="none"</code>
-        to hide score feedback.
+        Complete <code>Y</code>. This part uses <code>z</code> and <code>x</code>
+        in the editable <code>values</code> list and customizes
+        <code>allowed_values</code> so toggle mode cycles through both
+        high-impedance and unknown states. Note that allowing <code>x</code> also
+        effectively allows blank submissions for toggle inputs as all cells start
+        with the value <code>x</code>.
     </p>
 </pl-question-panel>
 
 <pl-waveform
     answers-name="tristate"
     hscale="1.5"
-    feedback="none"
     signals-param="tristate_signals">
 </pl-waveform>
 

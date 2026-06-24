@@ -775,13 +775,16 @@ def _build_editable_row_model(
     sig: dict[str, Any],
     answers_name: str,
     raw_submitted_answers: dict[str, Any],
+    input_mode: str,
 ) -> dict[str, Any]:
     """Build client-side metadata for one editable signal row."""
     cells = []
     allowed_values = _get_allowed_values(sig)
 
     for cell in _editable_cells(sig, answers_name):
-        raw = raw_submitted_answers.get(cell["key"], "")
+        raw = _question_initial_raw_value(
+            cell["key"], raw_submitted_answers, allowed_values, input_mode
+        )
         submitted_value = (
             _canonical_answer_value(raw, allowed_values, from_json=False) or ""
         )
@@ -936,7 +939,9 @@ def _question_cell_model(
 ) -> dict[str, Any]:
     """Build mustache metadata for one question-panel input cell."""
     allowed_values = _get_allowed_values(sig)
-    raw = raw_submitted_answers.get(cell["key"], "")
+    raw = _question_initial_raw_value(
+        cell["key"], raw_submitted_answers, allowed_values, input_mode
+    )
     canonical_raw = _canonical_answer_value(raw, allowed_values, from_json=False)
 
     return {
@@ -959,6 +964,20 @@ def _question_cell_model(
     }
 
 
+def _question_initial_raw_value(
+    key: str,
+    raw_submitted_answers: dict[str, Any],
+    allowed_values: list[str],
+    input_mode: str,
+) -> Any:
+    """Return the initial question-panel value for one editable cell."""
+    if key in raw_submitted_answers:
+        return raw_submitted_answers[key]
+    if input_mode == "toggle" and _canonical_value("x", allowed_values):
+        return "x"
+    return ""
+
+
 def _question_editable_rows(
     signals: list[dict[str, Any]],
     answers_name: str,
@@ -976,7 +995,7 @@ def _question_editable_rows(
         sig_cells = _editable_cells(sig, answers_name)
         max_cycles = max(max_cycles, len(sig_cells))
         editable_row_models.append(
-            _build_editable_row_model(sig, answers_name, raw_answers)
+            _build_editable_row_model(sig, answers_name, raw_answers, input_mode)
         )
         editable_rows.append(
             {

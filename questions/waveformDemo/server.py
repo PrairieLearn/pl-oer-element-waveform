@@ -148,7 +148,7 @@ def generate(data):
             "editable": True,
             "start_values": [d_tri_values[0]],
             "values": y_tri_answers,
-            "allowed_values": ["0", "1", "z"],
+            "allowed_values": ["0", "1", "z", "x"],
         },
     ]
 

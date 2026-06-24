@@ -507,6 +507,25 @@ def test_question_render_exposes_editable_cell_metadata() -> None:
     assert [cell["period"] for cell in editable_cells] == [1, 1]
 
 
+def test_toggle_question_initial_x_matches_toggled_x() -> None:
+    element_html = '<pl-waveform answers-name="part5"></pl-waveform>'
+    data = _base_data(
+        [
+            {"name": "clk", "editable": False, "wave": "lP"},
+            {"name": "Y", "editable": True, "values": ["x"]},
+        ]
+    )
+
+    rendered = _render(element_html, data)
+    editable_cell = rendered["editable_rows"][0]["cells"][0]
+    row_model = json.loads(rendered["editable_row_models_json"])[0]
+
+    assert editable_cell["toggle_value"] == "x"
+    assert editable_cell["raw_value"] == "x"
+    assert row_model["cells"][0]["value"] == "x"
+    assert row_model["cells"][0]["is_x"] is True
+
+
 def test_editable_rows_support_period_metadata_and_duration() -> None:
     element_html = '<pl-waveform answers-name="half" input-mode="text"></pl-waveform>'
     data = _base_data(
