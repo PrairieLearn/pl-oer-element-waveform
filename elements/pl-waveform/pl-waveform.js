@@ -27,8 +27,6 @@ $(document).ready(function () {
     $(document).on('shown.bs.collapse shown.bs.tab shown.bs.modal', function (event) {
         initVisibleWaveforms(event.target);
     });
-
-    observePendingWaveformVisibility();
 });
 
 
@@ -39,23 +37,8 @@ $(document).ready(function () {
 var DEFAULT_ALLOWED_VALUES = ['0', '1', 'x'];
 var DEFAULT_SIGNAL_LABEL_HEIGHT = 22;
 var SIGNAL_ROW_VERTICAL_PADDING = 16;
-var FEEDBACK_STATE_CLASSES = [
-    'pl-waveform-correct',
-    'pl-waveform-incorrect',
-    'pl-waveform-unanswered',
-    'pl-waveform-control-error',
-    'pl-waveform-invalid'
-];
-var GENERATED_OVERLAY_SELECTORS = [
-    '.pl-waveform-feedback-overlay',
-    '.pl-waveform-diff-marker',
-    '.pl-waveform-row-score-badge',
-    '.pl-waveform-element-score-badge',
-    '.pl-waveform-parse-error',
-    '.pl-waveform-parse-error-summary',
-    '.pl-waveform-cell-score-badge',
-    '.pl-waveform-input-hint'
-];
+var FEEDBACK_STATE_CLASSES = 'pl-waveform-correct pl-waveform-incorrect pl-waveform-unanswered pl-waveform-control-error pl-waveform-invalid'.split(' ');
+var GENERATED_OVERLAY_SELECTOR = '.pl-waveform-feedback-overlay, .pl-waveform-diff-marker, .pl-waveform-row-score-badge, .pl-waveform-element-score-badge, .pl-waveform-parse-error, .pl-waveform-parse-error-summary, .pl-waveform-cell-score-badge, .pl-waveform-input-hint';
 
 /** Normalize a raw value for comparison. */
 function normalizeRawValue(value) {
@@ -212,9 +195,7 @@ function removeOverlays(container, selector) {
 
 /** Remove all generated overlays from a waveform container. */
 function clearGeneratedOverlays(container) {
-    GENERATED_OVERLAY_SELECTORS.forEach(function (selector) {
-        removeOverlays(container, selector);
-    });
+    removeOverlays(container, GENERATED_OVERLAY_SELECTOR);
 }
 
 /** Clear feedback state classes from a question control. */
@@ -242,7 +223,9 @@ function deferUntilVisible(container) {
 
     if (typeof ResizeObserver !== 'undefined' && !container._plWaveformResizeObserver) {
         container._plWaveformResizeObserver = new ResizeObserver(function () {
-            if (isMeasurableWaveform(container)) {
+            // Avoid re-rendering on overlay size changes after the hidden panel has initialized.
+            if (container.getAttribute('data-pl-waveform-pending-init') === 'true' &&
+                isMeasurableWaveform(container)) {
                 reinitContainer(container);
             }
         });
@@ -264,27 +247,6 @@ function initVisibleWaveforms(root) {
         if (container.getAttribute('data-pl-waveform-pending-init') === 'true' || isMeasurableWaveform(container)) {
             reinitContainer(container);
         }
-    });
-}
-
-/** Watch for hidden panels becoming visible when no framework event fires. */
-function observePendingWaveformVisibility() {
-    if (typeof MutationObserver === 'undefined') return;
-
-    var timer = null;
-    var observer = new MutationObserver(function () {
-        if (!document.querySelector('.pl-waveform[data-pl-waveform-pending-init="true"]')) return;
-        clearTimeout(timer);
-        timer = setTimeout(function () {
-            initVisibleWaveforms(document);
-        }, 50);
-    });
-
-    observer.observe(document.body, {
-        attributes: true,
-        attributeFilter: ['class', 'style', 'hidden'],
-        childList: true,
-        subtree: true
     });
 }
 
@@ -491,26 +453,6 @@ function getEditableSignals(container) {
     }
 }
 
-/** Return the per-container map of cells touched by the student. */
-function getTouchedCellMap(container) {
-    if (!container._plWaveformTouchedCells) {
-        container._plWaveformTouchedCells = {};
-    }
-    return container._plWaveformTouchedCells;
-}
-
-/** Mark an editable cell as touched. */
-function markCellTouched(container, key) {
-    if (!container || !key) return;
-    getTouchedCellMap(container)[key] = true;
-}
-
-/** Check whether an editable cell has been touched. */
-function isCellTouched(container, key) {
-    if (!container || !key) return false;
-    return !!getTouchedCellMap(container)[key];
-}
-
 /** Sync a rendered hit target's metadata and CSS state. */
 function updateHitTargetMetadata(target, value) {
     var allowedValues = getAllowedValues(target);
@@ -562,39 +504,21 @@ function getEditableRowModels(container) {
     return container._plWaveformEditableRows;
 }
 
-/** Return the embedded WaveDrom script for a container. */
-function getWaveDromScript(container) {
-    return container.querySelector('script[type="WaveDrom"]');
-}
-
-/** Extract the WaveDrom render index from the embedded script id. */
-function getWaveDromIndex(container) {
-    var script = getWaveDromScript(container);
-    if (!script || !script.id) return null;
-    var match = script.id.match(/^InputJSON_(\d+)$/);
-    return match ? Number(match[1]) : null;
-}
-
 /** Re-render a WaveDrom model into the existing output slot. */
 function rerenderWaveDrom(container, model) {
-    var script = getWaveDromScript(container);
-    var index = getWaveDromIndex(container);
-    if (!script || index === null || !model) return;
+    var script = container.querySelector('script[type="WaveDrom"]');
+    var match = script && script.id && script.id.match(/^InputJSON_(\d+)$/);
+    if (!script || !match || !model) return;
 
     script.textContent = JSON.stringify(model);
-    WaveDrom.RenderWaveForm(index, prepareWaveDromModel(model), 'WaveDrom_Display_');
-}
-
-/** Return whether two WaveDrom signal names refer to the same display value. */
-function signalNamesEqual(left, right) {
-    return JSON.stringify(left) === JSON.stringify(right);
+    WaveDrom.RenderWaveForm(Number(match[1]), prepareWaveDromModel(model), 'WaveDrom_Display_');
 }
 
 /** Find a signal entry by display name within a WaveDrom model. */
 function findWaveDromSignal(model, signalName) {
     if (!model || !Array.isArray(model.signal)) return null;
     for (var idx = 0; idx < model.signal.length; idx += 1) {
-        if (model.signal[idx] && signalNamesEqual(model.signal[idx].name, signalName)) {
+        if (model.signal[idx] && JSON.stringify(model.signal[idx].name) === JSON.stringify(signalName)) {
             return model.signal[idx];
         }
     }
@@ -1037,9 +961,6 @@ function createToggleRowElement(container, rowModel, firstTickX, unitWidth, rowY
 
         var initialValue = hiddenInput ? hiddenInput.value : cell.value;
         if (normalizeEditableValue(initialValue, rowModel.allowed_values || ['0', '1', 'x']) !== '') {
-            markCellTouched(container, cell.key);
-        }
-        if (isCellTouched(container, cell.key)) {
             hitTarget.setAttribute('data-touched', 'true');
         }
         updateHitTargetMetadata(hitTarget, initialValue);
@@ -1089,9 +1010,7 @@ function buildTextEditorRowBands(container) {
 
 /** Advance a toggle cell to the next allowed state. */
 function advanceRenderedCell(control) {
-    var container = control.closest('.pl-waveform');
-    var key = getControlKey(control);
-    var touched = isCellTouched(container, key);
+    var touched = control.getAttribute('data-touched') === 'true';
     var allowedValues = getAllowedValues(control);
     var states = touched ? allowedValues.slice() : [''].concat(allowedValues);
     var current = normalizeEditableValue(control.getAttribute('data-value'), allowedValues);
@@ -1106,12 +1025,11 @@ function setRenderedCellValue(control, value, options) {
     var opts = options || {};
     var allowedValues = getAllowedValues(control);
     var container = control.closest('.pl-waveform');
-    var key = getControlKey(control);
-    if (opts.markTouched && container && key) {
-        markCellTouched(container, key);
+    if (opts.markTouched) {
+        control.setAttribute('data-touched', 'true');
     }
 
-    var touched = isCellTouched(container, key);
+    var touched = control.getAttribute('data-touched') === 'true';
     var normalized = normalizeEditableValue(value, allowedValues);
     if (touched && normalized === '') {
         var current = normalizeEditableValue(control.getAttribute('data-value'), allowedValues);
@@ -1269,27 +1187,30 @@ function appendCellOverlay(container, m, signalName, cycleNum, className, absInd
     container.appendChild(overlay);
 }
 
-/** Return the tooltip text for a scored cell. */
-function cellFeedbackTitle(cell) {
-    if (cell.correct) return 'correct';
-    if (cell.invalid) return cell.invalid_message || 'invalid';
-    return cell.unanswered ? 'unanswered' : 'incorrect';
-}
-
 /** Create the badge used for cell-level feedback. */
 function createCellScoreBadge(cell, corner) {
     var badge = document.createElement(corner ? 'span' : 'div');
+    var title = cell.correct
+        ? 'correct'
+        : (cell.invalid ? cell.invalid_message || 'invalid' : (cell.unanswered ? 'unanswered' : 'incorrect'));
     badge.className = 'pl-waveform-cell-score-badge ' +
         (corner ? 'pl-waveform-cell-score-badge-corner ' : '') +
         (cell.correct ? 'pl-waveform-cell-score-correct' : 'pl-waveform-cell-score-incorrect');
     badge.textContent = cell.correct ? '\u2713' : '\u2717';
-    badge.title = cellFeedbackTitle(cell);
+    badge.title = title;
     if (corner) {
         badge.setAttribute('aria-hidden', 'true');
     } else {
-        badge.setAttribute('aria-label', badge.title);
+        badge.setAttribute('aria-label', title);
     }
     return badge;
+}
+
+/** Return the CSS state class for one scored cell. */
+function cellFeedbackClass(cell) {
+    if (cell.correct) return 'pl-waveform-correct';
+    if (cell.invalid) return 'pl-waveform-invalid';
+    return cell.incorrect ? 'pl-waveform-incorrect' : 'pl-waveform-unanswered';
 }
 
 
@@ -1523,10 +1444,7 @@ function renderScoreFeedback(container) {
                 if (!cell) return;
 
                 clearFeedbackClasses(control);
-                if (cell.correct) control.classList.add('pl-waveform-correct');
-                else if (cell.invalid) control.classList.add('pl-waveform-invalid');
-                else if (cell.incorrect) control.classList.add('pl-waveform-incorrect');
-                else if (cell.unanswered) control.classList.add('pl-waveform-unanswered');
+                control.classList.add(cellFeedbackClass(cell));
 
                 control.appendChild(createCellScoreBadge(cell, true));
             });
@@ -1548,10 +1466,7 @@ function renderScoreFeedback(container) {
                 var cell = scoreMap[mapKey];
                 clearFeedbackClasses(inp);
                 if (!cell) return;
-                if (cell.correct) inp.classList.add('pl-waveform-correct');
-                else if (cell.invalid) inp.classList.add('pl-waveform-invalid');
-                else if (cell.incorrect) inp.classList.add('pl-waveform-incorrect');
-                else if (cell.unanswered) inp.classList.add('pl-waveform-unanswered');
+                inp.classList.add(cellFeedbackClass(cell));
 
                 var r = inp.getBoundingClientRect();
                 var relL = r.left - containerRect.left;

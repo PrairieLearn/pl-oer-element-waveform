@@ -295,7 +295,7 @@ def test_editable_z_is_inferred_as_a_digital_allowed_value() -> None:
 
     assert signal["correct_wave"] == "z.1"
     assert pl_waveform._get_allowed_values(signal) == ["0", "1", "z"]  # noqa: SLF001
-    assert pl_waveform._uses_bus_rendering(signal) is False  # noqa: SLF001
+    assert signal["is_bus"] is False
 
     _prepare_parse_grade(element_html, data)
 
