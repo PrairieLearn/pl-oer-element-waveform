@@ -8,7 +8,7 @@ $(document).ready(function () {
     bindTextInputHints();
     bindTextInputValidation();
 
-    WaveDrom.ProcessAll();
+    renderWaveDromScripts();
 
     $('.pl-waveform').each(function () {
         initContainer(this);
@@ -38,7 +38,8 @@ $(document).ready(function () {
 // ═══════════════════════════════════════════════════════════════════════════
 
 var DEFAULT_ALLOWED_VALUES = ['0', '1', 'x'];
-var SVG_NS = 'http://www.w3.org/2000/svg';
+var DEFAULT_SIGNAL_LABEL_HEIGHT = 22;
+var SIGNAL_ROW_VERTICAL_PADDING = 16;
 
 /** Normalize a raw value for comparison. */
 function normalizeRawValue(value) {
@@ -100,10 +101,12 @@ function measureSVGPositions(container, signalNames) {
     var svg = container.querySelector('svg');
     if (!svg) return null;
 
+    var containerRect = container.getBoundingClientRect();
     var signalSet = new Set(signalNames);
     var tickXMap = {};
     var tickYMap = {};
     var signalYMap = {};
+    var signalBoundsMap = {};
 
     Array.from(svg.querySelectorAll('text')).forEach(function (t) {
         var txt = t.textContent.trim();
@@ -126,6 +129,29 @@ function measureSVGPositions(container, signalNames) {
                 var bbox2 = t.getBBox();
                 var pt2 = toSVGPixels(svg, t, bbox2.x, bbox2.y + bbox2.height / 2);
                 if (pt2) signalYMap[txt] = pt2.y;
+
+                var labelRect = t.getBoundingClientRect();
+                var labelBounds = {
+                    top: labelRect.top - containerRect.top,
+                    bottom: labelRect.bottom - containerRect.top
+                };
+                var lane = t.closest('[id^="wavelane_"]');
+                if (lane && !signalBoundsMap[txt]) {
+                    var laneBox = lane.getBBox();
+                    var top = toSVGPixels(svg, lane, laneBox.x, laneBox.y);
+                    var bottom = toSVGPixels(svg, lane, laneBox.x, laneBox.y + laneBox.height);
+                    if (top && bottom) {
+                        labelBounds.top = Math.min(labelBounds.top, top.y, bottom.y);
+                        labelBounds.bottom = Math.max(labelBounds.bottom, top.y, bottom.y);
+                    }
+                }
+                if (!signalBoundsMap[txt]) {
+                    signalBoundsMap[txt] = {
+                        top: labelBounds.top,
+                        bottom: labelBounds.bottom,
+                        height: labelBounds.bottom - labelBounds.top
+                    };
+                }
             } catch (e) { /* skip */ }
         }
     });
@@ -139,7 +165,13 @@ function measureSVGPositions(container, signalNames) {
     container.style.position = 'relative';
     container.style.display = 'inline-block';
 
-    return { tickXMap: tickXMap, signalYMap: signalYMap, sortedTicks: sortedTicks, unitWidth: unitWidth };
+    return {
+        tickXMap: tickXMap,
+        signalYMap: signalYMap,
+        signalBoundsMap: signalBoundsMap,
+        sortedTicks: sortedTicks,
+        unitWidth: unitWidth
+    };
 }
 
 /** Remove all overlay elements matching a selector from a container. */
@@ -191,6 +223,29 @@ function getTickSpanBounds(measurements) {
     };
 }
 
+/** Return the measured vertical bounds for a signal row. */
+function getSignalRowBounds(measurements, signalName, fallbackY, fallbackHeight) {
+    var minHeight = fallbackHeight || 34;
+    var bounds = measurements && measurements.signalBoundsMap && measurements.signalBoundsMap[signalName];
+    if (bounds && Number.isFinite(bounds.top) && Number.isFinite(bounds.bottom) && bounds.bottom > bounds.top) {
+        var paddedHeight = bounds.height > DEFAULT_SIGNAL_LABEL_HEIGHT
+            ? Math.max(minHeight, bounds.height + SIGNAL_ROW_VERTICAL_PADDING)
+            : minHeight;
+        var center = (bounds.top + bounds.bottom) / 2;
+        return {
+            top: center - paddedHeight / 2,
+            bottom: center + paddedHeight / 2,
+            height: paddedHeight
+        };
+    }
+
+    return {
+        top: fallbackY - minHeight / 2,
+        bottom: fallbackY + minHeight / 2,
+        height: minHeight
+    };
+}
+
 /** Compute the left and right bounds covered by a row's editable cells. */
 function computeRowBoundsFromCells(cells, firstTickX, unitWidth, fallbackPeriod) {
     if (!Array.isArray(cells) || cells.length === 0 || !Number.isFinite(firstTickX) || !Number.isFinite(unitWidth)) {
@@ -238,6 +293,72 @@ function getQuestionControls(container) {
     return Array.from(container.querySelectorAll('.pl-waveform-question-control'));
 }
 
+/** Return the visible text represented by a WaveDrom name value. */
+function nameText(value) {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        return String(value);
+    }
+    if (!Array.isArray(value)) return '';
+
+    var children = value;
+    if (value.length > 0 && typeof value[0] === 'string') {
+        children = value.slice(1);
+    }
+    if (children.length > 0 && Object.prototype.toString.call(children[0]) === '[object Object]') {
+        children = children.slice(1);
+    }
+    return children.map(nameText).join('');
+}
+
+/** Add WaveDrom label-width metadata for formatted array names. */
+function prepareWaveDromName(name) {
+    if (!Array.isArray(name)) return;
+
+    var text = nameText(name);
+    Object.defineProperty(name, 'textWidth', {
+        value: Math.max(1, text.length * 8),
+        configurable: true
+    });
+}
+
+/** Add WaveDrom-compatible width metadata to all signal names in a model. */
+function prepareWaveDromModel(model) {
+    if (!model || !Array.isArray(model.signal)) return model;
+    model.signal.forEach(function (signal) {
+        if (signal && typeof signal === 'object' && !Array.isArray(signal)) {
+            prepareWaveDromName(signal.name);
+        }
+    });
+    return model;
+}
+
+/** Render the WaveDrom scripts owned by this element. */
+function renderWaveDromScripts() {
+    $('.pl-waveform script[type="WaveDrom"]').each(function (idx) {
+        var script = this;
+        var displayId = 'WaveDrom_Display_' + idx;
+        script.id = 'InputJSON_' + idx;
+
+        if (!document.getElementById(displayId)) {
+            var display = document.createElement('div');
+            display.id = displayId;
+            script.parentNode.insertBefore(display, script);
+        }
+
+        try {
+            var model = prepareWaveDromModel(JSON.parse(script.textContent || '{}'));
+            var container = script.closest('.pl-waveform');
+            if (container && !container._plWaveformBaseModel) {
+                container._plWaveformBaseModel = cloneJSON(model);
+            }
+            WaveDrom.RenderWaveForm(idx, model, 'WaveDrom_Display_');
+        } catch (e) {
+            console.error('pl-waveform: could not render WaveDrom model', e);
+        }
+    });
+}
+
 /** Return the stable key used to identify a rendered control. */
 function getControlKey(control) {
     return control.getAttribute('data-key') || control.getAttribute('name') || '';
@@ -255,76 +376,6 @@ function getEditableSignals(container) {
     } catch (e) {
         return [];
     }
-}
-
-/** Read formatted signal-name metadata for a rendered waveform. */
-function getFormattedNames(container) {
-    if (!container._plWaveformFormattedNames) {
-        container._plWaveformFormattedNames = parseJsonScript(container, '.pl-waveform-formatted-names', []);
-    }
-    return container._plWaveformFormattedNames;
-}
-
-/** Return whether a value is a plain object. */
-function isPlainObject(value) {
-    return Object.prototype.toString.call(value) === '[object Object]';
-}
-
-/** Set safe SVG tspan attributes from authored WaveDrom name metadata. */
-function setTspanAttributes(tspan, attrs) {
-    if (!isPlainObject(attrs)) return;
-    Object.keys(attrs).forEach(function (name) {
-        var value = attrs[name];
-        if (value === null || value === undefined) return;
-        tspan.setAttribute(name, String(value));
-    });
-}
-
-/** Append SVG tspans for an authored WaveDrom-style name value. */
-function appendFormattedName(parent, value) {
-    if (value === null || value === undefined || isPlainObject(value)) return;
-
-    if (!Array.isArray(value)) {
-        parent.appendChild(document.createTextNode(String(value)));
-        return;
-    }
-
-    var children = value;
-    var attrs = null;
-    if (value[0] === 'tspan') {
-        children = value.slice(1);
-    }
-    if (children.length > 0 && isPlainObject(children[0])) {
-        attrs = children[0];
-        children = children.slice(1);
-    }
-
-    var span = document.createElementNS(SVG_NS, 'tspan');
-    setTspanAttributes(span, attrs);
-    children.forEach(function (child) {
-        appendFormattedName(span, child);
-    });
-    parent.appendChild(span);
-}
-
-/** Normalize a rendered label for matching against WaveDrom text output. */
-function normalizeLabelText(value) {
-    return String(value || '').replace(/\s+/g, '').trim();
-}
-
-/** Apply authored rich signal names after WaveDrom renders string labels. */
-function applyFormattedSignalNames(container) {
-    var svg = container.querySelector('svg');
-    if (!svg) return;
-
-    getFormattedNames(container).forEach(function (entry) {
-        if (!entry || !Array.isArray(entry.name)) return;
-        Array.from(svg.querySelectorAll('text.info[text-anchor="end"]')).forEach(function (text) {
-            if (normalizeLabelText(text.textContent) !== normalizeLabelText(entry.label)) return;
-            text.textContent = '';
-            appendFormattedName(text, entry.name);
-        });
-    });
 }
 
 /** Return the per-container map of cells touched by the student. */
@@ -385,7 +436,7 @@ function cloneJSON(value) {
 /** Return the cached base WaveDrom model for a container. */
 function getBaseWaveDromModel(container) {
     if (!container._plWaveformBaseModel) {
-        container._plWaveformBaseModel = parseJsonScript(container, '.pl-waveform-base-model', null);
+        container._plWaveformBaseModel = parseJsonScript(container, 'script[type="WaveDrom"]', null);
     }
     return container._plWaveformBaseModel ? cloneJSON(container._plWaveformBaseModel) : null;
 }
@@ -418,8 +469,7 @@ function rerenderWaveDrom(container, model) {
     if (!script || index === null || !model) return;
 
     script.textContent = JSON.stringify(model);
-    WaveDrom.RenderWaveForm(index, model, 'WaveDrom_Display_');
-    applyFormattedSignalNames(container);
+    WaveDrom.RenderWaveForm(index, prepareWaveDromModel(model), 'WaveDrom_Display_');
 }
 
 /** Return whether two WaveDrom signal names refer to the same display value. */
@@ -452,6 +502,13 @@ function getControlValue(container, cell, allowedValues) {
 function applyEditableRowToSignal(container, signalModel, rowModel) {
     if (!signalModel || !rowModel) return;
 
+    signalModel.wave = rowModel.wave;
+    if (Array.isArray(rowModel.data) && rowModel.data.length > 0) {
+        signalModel.data = rowModel.data.slice();
+    } else {
+        delete signalModel.data;
+    }
+
     var waveChars = String(rowModel.wave || '').split('');
     var cellsByAbsIndex = {};
     var allowedValues = rowModel.allowed_values || DEFAULT_ALLOWED_VALUES;
@@ -462,7 +519,7 @@ function applyEditableRowToSignal(container, signalModel, rowModel) {
     if (rowModel.is_bus) {
         var dataValues = [];
         var prevBusValue = null;
-        var fixedData = Array.isArray(signalModel.data) ? signalModel.data.slice() : [];
+        var fixedData = Array.isArray(rowModel.data) ? rowModel.data.slice() : [];
         var fixedDataIdx = 0;
 
         waveChars = waveChars.map(function (ch, absIndex) {
@@ -774,19 +831,19 @@ function buildToggleEditor(container) {
 
     var baseRows = getEditableRowModels(container);
     var firstTickX = m.tickXMap[m.sortedTicks[0]];
-    var rowHeight = 34;
 
     baseRows.forEach(function (baseRow) {
         var sigY = m.signalYMap[baseRow.signal_name];
         if (sigY === undefined) return;
 
-        var rowElement = createToggleRowElement(container, baseRow, firstTickX, m.unitWidth, rowHeight, sigY);
+        var rowY = getSignalRowBounds(m, baseRow.signal_name, sigY, 34);
+        var rowElement = createToggleRowElement(container, baseRow, firstTickX, m.unitWidth, rowY);
         editorLayer.appendChild(rowElement);
     });
 }
 
 /** Create a toggle-mode row and its interactive cell buttons. */
-function createToggleRowElement(container, rowModel, firstTickX, unitWidth, rowHeight, sigY) {
+function createToggleRowElement(container, rowModel, firstTickX, unitWidth, rowY) {
     var cellPeriod = rowModel.period || 1;
     var rowBounds = computeRowBoundsFromCells(rowModel.cells, firstTickX, unitWidth, cellPeriod) || {
         left: firstTickX,
@@ -797,9 +854,9 @@ function createToggleRowElement(container, rowModel, firstTickX, unitWidth, rowH
     rowElement.setAttribute('data-signal', rowModel.signal_name);
     rowElement.setAttribute('data-allowed-values', JSON.stringify(rowModel.allowed_values || DEFAULT_ALLOWED_VALUES));
     rowElement.style.left = Math.round(rowBounds.left) + 'px';
-    rowElement.style.top = Math.round(sigY - rowHeight / 2) + 'px';
+    rowElement.style.top = Math.round(rowY.top) + 'px';
     rowElement.style.width = Math.round(rowBounds.right - rowBounds.left) + 'px';
-    rowElement.style.height = rowHeight + 'px';
+    rowElement.style.height = Math.round(rowY.height) + 'px';
 
     rowModel.cells.forEach(function (cell) {
         if (!cell.editable) return;
@@ -817,7 +874,7 @@ function createToggleRowElement(container, rowModel, firstTickX, unitWidth, rowH
         hitTarget.style.left = Math.round(firstTickX + (cell.abs_index * unitWidth * cellPeriod) - rowBounds.left) + 'px';
         hitTarget.style.top = '0';
         hitTarget.style.width = Math.round(unitWidth * cellPeriod) + 'px';
-        hitTarget.style.height = rowHeight + 'px';
+        hitTarget.style.height = Math.round(rowY.height) + 'px';
 
         var hiddenInput = document.getElementById('pl-wf-hidden-' + cell.key);
         if (hiddenInput && hiddenInput.disabled) {
@@ -856,20 +913,20 @@ function buildTextEditorRowBands(container) {
     var baseRows = getEditableRowModels(container);
     var tickSpan = getTickSpanBounds(m);
     if (!tickSpan) return;
-    var rowHeight = 34;
 
     baseRows.forEach(function (baseRow) {
         var sigY = m.signalYMap[baseRow.signal_name];
         if (sigY === undefined) return;
         var rowBounds = computeRowBoundsFromCells(baseRow.cells, tickSpan.left, m.unitWidth, baseRow.period) || tickSpan;
+        var rowY = getSignalRowBounds(m, baseRow.signal_name, sigY, 34);
 
         var band = document.createElement('div');
         band.className = 'pl-waveform-editor-row';
         band.setAttribute('data-signal', baseRow.signal_name);
         band.style.left = Math.round(rowBounds.left) + 'px';
-        band.style.top = Math.round(sigY - rowHeight / 2) + 'px';
+        band.style.top = Math.round(rowY.top) + 'px';
         band.style.width = Math.round(rowBounds.right - rowBounds.left) + 'px';
-        band.style.height = rowHeight + 'px';
+        band.style.height = Math.round(rowY.height) + 'px';
         editorLayer.appendChild(band);
     });
 }
@@ -989,8 +1046,6 @@ function initContainer(container) {
     var panel = container.getAttribute('data-panel') || '';
     var inputMode = getInputMode(container);
 
-    applyFormattedSignalNames(container);
-
     if (panel === 'question') {
         if (inputMode === 'toggle') {
             buildToggleEditor(container);
@@ -1032,12 +1087,12 @@ function appendCellOverlay(container, m, signalName, cycleNum, className, absInd
     }
 
     var overlayW = Math.max(18, m.unitWidth * getSlotPeriod(period, 1) * 0.85);
-    var overlayH = 28;
+    var rowY = getSignalRowBounds(m, signalName, sigY, 28);
 
     overlay.style.left = Math.round(centreX - overlayW / 2) + 'px';
-    overlay.style.top = Math.round(sigY - overlayH / 2) + 'px';
+    overlay.style.top = Math.round(rowY.top) + 'px';
     overlay.style.width = Math.round(overlayW) + 'px';
-    overlay.style.height = overlayH + 'px';
+    overlay.style.height = Math.round(rowY.height) + 'px';
 
     container.appendChild(overlay);
 }

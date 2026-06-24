@@ -224,11 +224,19 @@ def generate(data):
         {
             "name": [
                 "tspan",
-                ["tspan", {"fill": "#0d6efd", "font-weight": "bold"}, "DATA"],
+                ["tspan", {"class": "info h5"}, "DATA"],
                 " ",
-                ["tspan", {"fill": "#dc3545", "baseline-shift": "sub"}, "out"],
+                ["tspan", {"class": "error", "baseline-shift": "sub"}, "out"],
                 " ",
-                ["tspan", {"fill": "#198754", "font-style": "italic"}, "inv"],
+                [
+                    "tspan",
+                    {
+                        "fill": "pink",
+                        "font-weight": "bold",
+                        "font-style": "italic",
+                    },
+                    "inv",
+                ],
             ],
             "editable": True,
             "values": formatted_output_values,

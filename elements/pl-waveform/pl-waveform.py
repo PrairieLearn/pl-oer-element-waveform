@@ -37,63 +37,6 @@ def _name_text(value: Any) -> str:
     return ""
 
 
-def _name_markup(value: Any) -> str:
-    """Convert a WaveDrom-style name value into signal-name markup."""
-    if isinstance(value, str):
-        return value
-    if isinstance(value, (int, float)):
-        return str(value)
-    if isinstance(value, dict):
-        return ""
-    if not isinstance(value, list):
-        return ""
-
-    children = value
-    attrs = None
-    if value and value[0] == "tspan":
-        children = value[1:]
-    if children and isinstance(children[0], dict):
-        attrs = children[0]
-        children = children[1:]
-
-    body = "".join(_name_markup(child) for child in children)
-    tags = _name_markup_tags(attrs)
-    return "".join(f"<{tag}>" for tag in tags) + body + "".join(
-        f"</{tag}>" for tag in reversed(tags)
-    )
-
-
-def _name_markup_tags(attrs: dict[str, Any] | None) -> list[str]:
-    """Return WaveDrom inline tags represented by tspan attributes."""
-    if not isinstance(attrs, dict):
-        return []
-
-    tags = []
-    if str(attrs.get("font-weight", "")).lower() == "bold":
-        tags.append("b")
-    if str(attrs.get("font-style", "")).lower() == "italic":
-        tags.append("i")
-    if "monospace" in str(attrs.get("font-family", "")).lower():
-        tags.append("tt")
-
-    baseline = str(attrs.get("baseline-shift", "")).lower()
-    dy = str(attrs.get("dy", "")).strip()
-    if baseline == "sub" or (dy and not dy.startswith("-") and dy != "0"):
-        tags.append("sub")
-    elif baseline == "super" or dy.startswith("-"):
-        tags.append("sup")
-
-    decoration = str(attrs.get("text-decoration", "")).lower()
-    if "overline" in decoration:
-        tags.append("o")
-    if "underline" in decoration:
-        tags.append("ins")
-    if "line-through" in decoration:
-        tags.append("s")
-
-    return tags
-
-
 def _signal_key_from_name(name: Any) -> str:
     """Build a stable answer-key component from a signal name."""
     if isinstance(name, str):
@@ -111,11 +54,6 @@ def _signal_key(sig: dict[str, Any]) -> str:
 def _signal_label(sig: dict[str, Any]) -> str:
     """Return the visible text label for a signal."""
     return sig.get("signal_label", _name_text(sig["name"]))
-
-
-def _wavedrom_name(sig: dict[str, Any]) -> str:
-    """Return the signal name passed to WaveDrom for rendering."""
-    return sig.get("wavedrom_name", _name_markup(sig["name"]))
 
 
 def _get_signals(element: Any, data: dict[str, Any]) -> list[dict[str, Any]]:
@@ -383,7 +321,6 @@ def _normalize_signal(sig: Any, idx: int) -> dict[str, Any]:
     editable = bool(sig.get("editable", False))
     normalized = {
         "name": sig_name,
-        "wavedrom_name": _name_markup(sig_name),
         "signal_key": signal_key,
         "signal_label": _name_text(sig_name),
         "editable": editable,
@@ -573,7 +510,7 @@ def _build_wavedrom(signals: list[dict[str, Any]], hscale: float) -> str:
     """Build the WaveDrom JSON payload for rendering."""
     wd_signals = []
     for sig in signals:
-        s = {"name": _wavedrom_name(sig)}
+        s = {"name": sig["name"]}
         s["wave"] = sig["wave"]
         if "period" in sig:
             s["period"] = sig["period"]
@@ -589,21 +526,6 @@ def _build_wavedrom(signals: list[dict[str, Any]], hscale: float) -> str:
             "config": {"hscale": hscale},
             "head": {"tick": 0},
         }
-    )
-
-
-def _formatted_name_entries(signals: list[dict[str, Any]]) -> str:
-    """Build client-side metadata for rich signal-name rendering."""
-    return json.dumps(
-        [
-            {
-                "label": _signal_label(sig),
-                "rendered_name": _wavedrom_name(sig),
-                "name": sig["name"],
-            }
-            for sig in signals
-            if isinstance(sig.get("name"), list)
-        ]
     )
 
 
@@ -856,7 +778,7 @@ def _build_editable_row_model(
     return {
         "signal_name": _signal_label(sig),
         "signal_key": _signal_key(sig),
-        "display_name": _wavedrom_name(sig),
+        "display_name": sig["name"],
         "wave": sig["wave"],
         "wave_length": len(sig["wave"]),
         "data": sig.get("data", []),
@@ -1124,8 +1046,6 @@ def _question_render_params(
         "input_mode": input_mode,
         "toggle_question": input_mode == "toggle",
         "wavedrom_json": _build_wavedrom(question_signals, hscale),
-        "formatted_names_json": _formatted_name_entries(question_signals),
-        "base_wavedrom_json": _build_wavedrom(signals, hscale),
         "editable_row_models_json": json.dumps(editable_row_models),
         "editable_rows": editable_rows,
         "has_editable": len(editable_rows) > 0,
@@ -1233,7 +1153,6 @@ def _submission_render_params(
         "wavedrom_json": _build_wavedrom(
             _build_submission_signals(signals, data, answers_name), hscale
         ),
-        "formatted_names_json": _formatted_name_entries(signals),
         "cell_scores_json": json.dumps(feedback_cells),
         "editable_signals_json": json.dumps(
             [_signal_label(sig) for sig in _editable_signals(signals)]
@@ -1306,7 +1225,6 @@ def render(element_html, data):
             "wavedrom_json": _build_wavedrom(
                 _build_correct_signals(signals, answers_name), hscale
             ),
-            "formatted_names_json": _formatted_name_entries(signals),
             "diff_json": json.dumps(_answer_diff_cells(signals, answers_name, data)),
             "editable_signals_json": json.dumps(
                 [_signal_label(sig) for sig in _editable_signals(signals)]

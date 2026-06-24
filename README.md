@@ -117,7 +117,7 @@ Advanced WaveDrom-style signal names are also supported. Instead of a string, `n
 data["params"]["signals"] = [
     {"name": "clk", "editable": False, "wave": "lP......"},
     {"name": "addr", "editable": False, "wave": "=.=", "data": ["first", "second"]},
-    {"name": ["tspan", ["tspan", {"fill": "#0d6efd", "font-weight": "bold"}, "DATA"], " ", ["tspan", {"fill": "#dc3545", "baseline-shift": "sub"}, "out"]], "editable": False, "values": [0, 1]},
+    {"name": ["tspan", ["tspan", {"class": "info h5"}, "DATA"], " ", ["tspan", {"class": "error", "baseline-shift": "sub"}, "out"]], "editable": False, "values": [0, 1]},
     {
         "name": "out",
         "editable": True,

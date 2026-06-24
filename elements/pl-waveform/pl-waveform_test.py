@@ -445,11 +445,15 @@ def test_editable_rows_support_period_metadata_and_duration() -> None:
 def test_array_signal_name_preserves_wavedrom_display_and_uses_text_key() -> None:
     formatted_name = [
         "tspan",
-        ["tspan", {"fill": "#0d6efd", "font-weight": "bold"}, "DATA"],
+        ["tspan", {"class": "info h5"}, "DATA"],
         " ",
-        ["tspan", {"fill": "#dc3545", "baseline-shift": "sub"}, "out"],
+        ["tspan", {"class": "error", "baseline-shift": "sub"}, "out"],
         " ",
-        ["tspan", {"fill": "#198754", "font-style": "italic"}, "inv"],
+        [
+            "tspan",
+            {"fill": "pink", "font-weight": "bold", "font-style": "italic"},
+            "inv",
+        ],
     ]
     element_html = '<pl-waveform answers-name="fmt"></pl-waveform>'
     data = _base_data(
@@ -468,7 +472,7 @@ def test_array_signal_name_preserves_wavedrom_display_and_uses_text_key() -> Non
     waveform = json.loads(rendered["wavedrom_json"])
     row_model = json.loads(rendered["editable_row_models_json"])[0]
 
-    assert waveform["signal"][1]["name"] == "<b>DATA</b> <sub>out</sub> <i>inv</i>"
+    assert waveform["signal"][1]["name"] == formatted_name
     assert data["correct_answers"] == {
         "fmt_DATA_out_inv_1": "1",
         "fmt_DATA_out_inv_2": "0",
@@ -476,14 +480,7 @@ def test_array_signal_name_preserves_wavedrom_display_and_uses_text_key() -> Non
     assert rendered["editable_rows"][0]["signal_name"] == "DATA out inv"
     assert row_model["signal_key"] == "DATA_out_inv"
     assert row_model["signal_name"] == "DATA out inv"
-    assert row_model["display_name"] == "<b>DATA</b> <sub>out</sub> <i>inv</i>"
-    assert json.loads(rendered["formatted_names_json"]) == [
-        {
-            "label": "DATA out inv",
-            "rendered_name": "<b>DATA</b> <sub>out</sub> <i>inv</i>",
-            "name": formatted_name,
-        }
-    ]
+    assert row_model["display_name"] == formatted_name
 
 
 def test_text_mode_metadata_supports_single_and_multicharacter_values() -> None:
