@@ -216,6 +216,30 @@ def generate(data):
         },
     ]
 
+    nibble_values = [
+        "".join(random.choices(binary_values, k=4))
+        for _ in range(4)
+    ]
+    hex_byte_values = [
+        "".join(random.choices(HEX_VALUES, k=2))
+        for _ in range(4)
+    ]
+    data["params"]["fixed_width_signals"] = [
+        {
+            "name": "bin[3:0]",
+            "editable": True,
+            "values": nibble_values,
+            "bus_width": 4,
+        },
+        {
+            "name": "hex[7:0]",
+            "editable": True,
+            "values": hex_byte_values,
+            "allowed_values": "hex",
+            "bus_width": 2,
+        },
+    ]
+
     formatted_input_values = random.choices(binary_values, k=4)
     formatted_output_values = ["1" if value == "0" else "0" for value in formatted_input_values]
     data["params"]["formatted_name_signals"] = [

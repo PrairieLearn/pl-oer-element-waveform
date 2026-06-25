@@ -681,6 +681,71 @@ def test_hex_allowed_values_grade_case_insensitively_and_render_as_bus() -> None
     assert rendered["result_rows"][0]["cells"][0]["submitted"] == "A"
 
 
+def test_bus_width_uses_allowed_values_as_a_character_alphabet() -> None:
+    element_html = '<pl-waveform answers-name="wide" input-mode="text"></pl-waveform>'
+    data = _base_data(
+        [
+            {
+                "name": "byte",
+                "editable": True,
+                "values": ["DE", "AD"],
+                "allowed_values": "hex",
+                "bus_width": 2,
+            },
+        ],
+        panel="submission",
+        submitted_answers={"wide_byte_1": "de", "wide_byte_2": "ad"},
+    )
+
+    _prepare_parse_grade(element_html, data)
+    rendered = _render(element_html, data)
+    waveform = json.loads(rendered["wavedrom_json"])
+
+    assert data["correct_answers"] == {
+        "wide_byte_1": "DE",
+        "wide_byte_2": "AD",
+    }
+    assert json.loads(data["submitted_answers"]["wide_byte_1"]) == "DE"
+    assert data["partial_scores"]["wide_byte_1"]["score"] == 1
+    assert waveform["signal"][0]["wave"] == "=="
+    assert waveform["signal"][0]["data"] == ["DE", "AD"]
+    assert rendered["result_rows"][0]["cells"][0]["submitted"] == "DE"
+
+
+@pytest.mark.parametrize(
+    ("submitted", "message"),
+    [
+        ("D", "Expected 2 characters"),
+        ("DOG", "Expected 2 characters"),
+        ("DG", "Expected 2 characters"),
+        ("", "Expected 2 characters"),
+    ],
+)
+def test_bus_width_invalid_text_values_report_format_errors(
+    submitted, message
+) -> None:
+    element_html = '<pl-waveform answers-name="wide" input-mode="text"></pl-waveform>'
+    data = _base_data(
+        [
+            {
+                "name": "byte",
+                "editable": True,
+                "values": ["DE"],
+                "allowed_values": "hex",
+                "bus_width": 2,
+            },
+        ],
+        submitted_answers={"wide_byte_1": submitted},
+    )
+
+    pl_waveform.prepare(element_html, data)
+    pl_waveform.parse(element_html, data)
+
+    assert "wide_byte_1" in data["format_errors"]
+    assert message in data["format_errors"]["wide_byte_1"]
+    assert data["partial_scores"] == {}
+
+
 @pytest.mark.parametrize(
     ("signal", "message"),
     [
@@ -722,6 +787,34 @@ def test_hex_allowed_values_grade_case_insensitively_and_render_as_bus() -> None
         (
             {"name": "D", "editable": True, "wave": "01"},
             "cannot define 'wave'",
+        ),
+        (
+            {
+                "name": "D",
+                "editable": True,
+                "values": ["10"],
+                "bus_width": 0,
+            },
+            "positive integer",
+        ),
+        (
+            {
+                "name": "D",
+                "editable": True,
+                "values": ["10"],
+                "bus_width": 2,
+                "allowed_values": ["0", "10"],
+            },
+            "must be a single character",
+        ),
+        (
+            {
+                "name": "D",
+                "editable": True,
+                "values": ["10", "1"],
+                "bus_width": 2,
+            },
+            "expected bus_width 2",
         ),
         (
             {
@@ -783,5 +876,5 @@ def test_waveform_demo_signal_sets_match_the_current_element_contract() -> None:
             if sig.get("editable")
         )
 
-    assert validated == 9
-    assert answer_keys == 65
+    assert validated == 10
+    assert answer_keys == 73

@@ -47,10 +47,21 @@ function normalizeRawValue(value) {
 }
 
 /** Normalize a value against a set of allowed values. */
-function normalizeEditableValue(value, allowedValues) {
+function normalizeEditableValue(value, allowedValues, busWidth) {
     var normalized = normalizeRawValue(value);
     if (normalized === '') return '';
     var allowed = allowedValues || DEFAULT_ALLOWED_VALUES;
+    if (busWidth) {
+        var displayed = String(value).trim();
+        if (displayed.length !== busWidth) return '';
+        var chars = [];
+        for (var charIdx = 0; charIdx < displayed.length; charIdx += 1) {
+            var canonical = normalizeEditableValue(displayed.charAt(charIdx), allowed, null);
+            if (canonical === '') return '';
+            chars.push(canonical);
+        }
+        return chars.join('');
+    }
     for (var idx = 0; idx < allowed.length; idx += 1) {
         if (normalizeRawValue(allowed[idx]) === normalized) {
             return String(allowed[idx]);
@@ -63,8 +74,10 @@ function normalizeEditableValue(value, allowedValues) {
 function getAllowedValues(controlOrRow) {
     if (!controlOrRow) return DEFAULT_ALLOWED_VALUES.slice();
     try {
-        var raw = controlOrRow.getAttribute('data-allowed-values');
-        var parsed = JSON.parse(raw || JSON.stringify(DEFAULT_ALLOWED_VALUES));
+        var parsed = controlOrRow.allowed_values;
+        if (!Array.isArray(parsed) && typeof controlOrRow.getAttribute === 'function') {
+            parsed = JSON.parse(controlOrRow.getAttribute('data-allowed-values') || JSON.stringify(DEFAULT_ALLOWED_VALUES));
+        }
         if (!Array.isArray(parsed) || parsed.length === 0) return DEFAULT_ALLOWED_VALUES.slice();
         var seen = {};
         return parsed.map(function (value) {
@@ -78,6 +91,17 @@ function getAllowedValues(controlOrRow) {
     } catch (e) {
         return DEFAULT_ALLOWED_VALUES.slice();
     }
+}
+
+/** Read a positive fixed bus width from a control or row model when present. */
+function getBusWidth(controlOrRow) {
+    if (!controlOrRow) return null;
+    var raw = controlOrRow.bus_width;
+    if (raw === undefined && typeof controlOrRow.getAttribute === 'function') {
+        raw = controlOrRow.getAttribute('data-bus-width');
+    }
+    var width = parseInt(raw, 10);
+    return Number.isFinite(width) && width > 0 ? width : null;
 }
 
 /** Convert element-local coordinates into SVG viewport coordinates. */
@@ -456,7 +480,7 @@ function getEditableSignals(container) {
 /** Sync a rendered hit target's metadata and CSS state. */
 function updateHitTargetMetadata(target, value) {
     var allowedValues = getAllowedValues(target);
-    var normalized = normalizeEditableValue(value, allowedValues);
+    var normalized = normalizeEditableValue(value, allowedValues, getBusWidth(target));
     var humanValue = normalized || 'unanswered';
     var baseLabel = target.dataset.baseAriaLabel || target.getAttribute('aria-label') || 'Waveform answer';
     target.dataset.baseAriaLabel = baseLabel;
@@ -526,13 +550,13 @@ function findWaveDromSignal(model, signalName) {
 }
 
 /** Resolve the current value for a rendered cell or hidden input. */
-function getControlValue(container, cell, allowedValues) {
+function getControlValue(container, cell, allowedValues, busWidth) {
     var hiddenInput = document.getElementById('pl-wf-hidden-' + cell.key);
     var control = hiddenInput || getQuestionControls(container).find(function (candidate) {
         return getControlKey(candidate) === cell.key;
     });
     if (!control) return '';
-    return normalizeEditableValue(control.value || control.getAttribute('data-value'), allowedValues);
+    return normalizeEditableValue(control.value || control.getAttribute('data-value'), allowedValues, busWidth);
 }
 
 /** Apply editable row values back onto the underlying WaveDrom signal. */
@@ -548,7 +572,8 @@ function applyEditableRowToSignal(container, signalModel, rowModel) {
 
     var waveChars = String(rowModel.wave || '').split('');
     var cellsByAbsIndex = {};
-    var allowedValues = rowModel.allowed_values || DEFAULT_ALLOWED_VALUES;
+    var allowedValues = getAllowedValues(rowModel);
+    var busWidth = getBusWidth(rowModel);
     rowModel.cells.forEach(function (cell) {
         cellsByAbsIndex[cell.abs_index] = cell;
     });
@@ -562,7 +587,7 @@ function applyEditableRowToSignal(container, signalModel, rowModel) {
         waveChars = waveChars.map(function (ch, absIndex) {
             var cell = cellsByAbsIndex[absIndex];
             if (cell) {
-                var busValue = getControlValue(container, cell, allowedValues);
+                var busValue = getControlValue(container, cell, allowedValues, busWidth);
                 if (busValue === '') {
                     prevBusValue = null;
                     return 'x';
@@ -605,7 +630,7 @@ function applyEditableRowToSignal(container, signalModel, rowModel) {
     waveChars = waveChars.map(function (ch, absIndex) {
         var cell = cellsByAbsIndex[absIndex];
         if (cell) {
-            var value = getControlValue(container, cell, allowedValues) || 'x';
+            var value = getControlValue(container, cell, allowedValues, busWidth) || 'x';
             if (value !== 'x' && value === prevValue) return '.';
             // Reset prevValue on 'x' so the next cell always emits a full
             // character rather than '.'. Without this, a sequence like 0→x→0
@@ -767,6 +792,15 @@ function isAllowedTextInputPrefix(input, value) {
     var normalizedRaw = normalizeRawValue(value);
     if (normalizedRaw === '') return true;
     var allowedValues = getAllowedValues(input);
+    var busWidth = getBusWidth(input);
+    if (busWidth) {
+        var displayed = String(value).trim();
+        if (displayed.length > busWidth) return false;
+        for (var charIdx = 0; charIdx < displayed.length; charIdx += 1) {
+            if (normalizeEditableValue(displayed.charAt(charIdx), allowedValues, null) === '') return false;
+        }
+        return true;
+    }
     for (var idx = 0; idx < allowedValues.length; idx += 1) {
         if (normalizeRawValue(allowedValues[idx]).indexOf(normalizedRaw) === 0) {
             return true;
@@ -782,12 +816,16 @@ function normalizeTextInputOnFocusChange(input) {
     var normalizedRaw = normalizeRawValue(input.value);
     if (normalizedRaw === '') {
         input.value = '';
-        clearTextInputParseError(input);
+        if (getBusWidth(input)) {
+            showTextInputParseError(input, invalidTextInputMessage(input));
+        } else {
+            clearTextInputParseError(input);
+        }
         updateQuestionWaveDrom(input.closest('.pl-waveform'));
         return;
     }
 
-    var normalized = normalizeEditableValue(input.value, getAllowedValues(input));
+    var normalized = normalizeEditableValue(input.value, getAllowedValues(input), getBusWidth(input));
     if (normalized === '') {
         showTextInputParseError(input, invalidTextInputMessage(input));
         updateQuestionWaveDrom(input.closest('.pl-waveform'));
@@ -813,6 +851,10 @@ function rejectTextInputValue(input) {
 
 /** Return the invalid-value message for a text input. */
 function invalidTextInputMessage(input) {
+    var busWidth = getBusWidth(input);
+    if (busWidth) {
+        return 'Invalid value. Expected ' + busWidth + ' characters using: ' + getAllowedValues(input).join(', ') + '.';
+    }
     return 'Invalid value. Expected one of: ' + getAllowedValues(input).join(', ') + '.';
 }
 
@@ -931,6 +973,7 @@ function createToggleRowElement(container, rowModel, firstTickX, unitWidth, rowY
     rowElement.className = 'pl-waveform-editor-row';
     rowElement.setAttribute('data-signal', rowModel.signal_name);
     rowElement.setAttribute('data-allowed-values', JSON.stringify(rowModel.allowed_values || DEFAULT_ALLOWED_VALUES));
+    if (rowModel.bus_width) rowElement.setAttribute('data-bus-width', rowModel.bus_width);
     rowElement.style.left = Math.round(rowBounds.left) + 'px';
     rowElement.style.top = Math.round(rowY.top) + 'px';
     rowElement.style.width = Math.round(rowBounds.right - rowBounds.left) + 'px';
@@ -948,6 +991,7 @@ function createToggleRowElement(container, rowModel, firstTickX, unitWidth, rowY
         hitTarget.setAttribute('data-abs-index', cell.abs_index);
         hitTarget.setAttribute('data-hidden-input-id', 'pl-wf-hidden-' + cell.key);
         hitTarget.setAttribute('data-allowed-values', JSON.stringify(rowModel.allowed_values || DEFAULT_ALLOWED_VALUES));
+        if (rowModel.bus_width) hitTarget.setAttribute('data-bus-width', rowModel.bus_width);
         hitTarget.setAttribute('aria-label', cell.aria_label);
         hitTarget.style.left = Math.round(firstTickX + (cell.abs_index * unitWidth * cellPeriod) - rowBounds.left) + 'px';
         hitTarget.style.top = '0';
@@ -960,7 +1004,7 @@ function createToggleRowElement(container, rowModel, firstTickX, unitWidth, rowY
         }
 
         var initialValue = hiddenInput ? hiddenInput.value : cell.value;
-        if (normalizeEditableValue(initialValue, rowModel.allowed_values || ['0', '1', 'x']) !== '') {
+        if (normalizeEditableValue(initialValue, rowModel.allowed_values || ['0', '1', 'x'], rowModel.bus_width) !== '') {
             hitTarget.setAttribute('data-touched', 'true');
         }
         updateHitTargetMetadata(hitTarget, initialValue);
@@ -1013,7 +1057,7 @@ function advanceRenderedCell(control) {
     var touched = control.getAttribute('data-touched') === 'true';
     var allowedValues = getAllowedValues(control);
     var states = touched ? allowedValues.slice() : [''].concat(allowedValues);
-    var current = normalizeEditableValue(control.getAttribute('data-value'), allowedValues);
+    var current = normalizeEditableValue(control.getAttribute('data-value'), allowedValues, getBusWidth(control));
     var idx = states.indexOf(current);
     if (idx === -1) idx = touched ? -1 : 0;
     setRenderedCellValue(control, states[(idx + 1) % states.length], { markTouched: true });
@@ -1024,15 +1068,16 @@ function advanceRenderedCell(control) {
 function setRenderedCellValue(control, value, options) {
     var opts = options || {};
     var allowedValues = getAllowedValues(control);
+    var busWidth = getBusWidth(control);
     var container = control.closest('.pl-waveform');
     if (opts.markTouched) {
         control.setAttribute('data-touched', 'true');
     }
 
     var touched = control.getAttribute('data-touched') === 'true';
-    var normalized = normalizeEditableValue(value, allowedValues);
+    var normalized = normalizeEditableValue(value, allowedValues, busWidth);
     if (touched && normalized === '') {
-        var current = normalizeEditableValue(control.getAttribute('data-value'), allowedValues);
+        var current = normalizeEditableValue(control.getAttribute('data-value'), allowedValues, busWidth);
         normalized = current || String(allowedValues[0] || '');
     }
 
@@ -1082,7 +1127,8 @@ function positionTextInputs(container) {
         var sigY = m.signalYMap[sigName];
         var slotPeriod = getSlotPeriod(inp.getAttribute('data-period'), 1);
         var slotWidth = m.unitWidth * slotPeriod;
-        var inputW = Math.max(24, Math.min(44, Math.round(slotWidth - 8)));
+        var contentW = getBusWidth(inp) ? (getBusWidth(inp) * 12 + 16) : 44;
+        var inputW = Math.max(24, Math.min(Math.max(44, contentW), Math.round(slotWidth - 8)));
         var centreX = getSlotCenterX(
             m,
             inp.getAttribute('data-abs-index'),

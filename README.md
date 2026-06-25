@@ -105,9 +105,18 @@ data["params"]["signals"] = [
 ]
 ```
 
+You can also set a custom `bus_width`, which requires all inputs to have a specified integer size. This setting can be used for both binary values (which then become buses) and custom `allowed_values` (including `"hex"`). However, all items in `allowed_values` must be single characters if `bus_width` is set, and all `values` must have a size that matches the `bus_width`.
+
+```python
+data["params"]["signals"] = [
+    {"name": "bin4", "editable": True, "values": ["1101", "1001", "1101", "1001"], "bus_width": 4},
+    {"name": "hex2", "editable": True, "values": ["DE", "AD", "BE", "EF"], "allowed_values": "hex", "bus_width": 2},
+]
+```
+
 #### Advanced WaveDrom Syntax
 
-The `values` format above is the recommended authoring interface for those not familiar with WaveDrom's syntax. To use all of WaveDrom's customization abilities or import existing wave drawings, you can also use raw WaveDrom notation. This notation is defined via the `wave` key (and optionally `data` for busses). 
+The `values` format above is the recommended authoring interface for those not familiar with WaveDrom's syntax. To use all of WaveDrom's customization abilities or import existing wave drawings, you can also use raw WaveDrom notation. This notation is defined via the `wave` key (and optionally `data` for buses). 
 
 Non-editable rows can only use either `values` **or** `wave`/`data`. Editable rows cannot use `wave`/`data` for the answerable segment; they must use `values`. Their fixed start/end segments may use `start_wave`/`start_data` and `end_wave`/`end_data` when the context needs raw WaveDrom notation.
 

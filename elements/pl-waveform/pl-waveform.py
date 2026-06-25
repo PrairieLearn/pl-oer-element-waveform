@@ -85,6 +85,26 @@ def _canonical_value(val: Any, allowed_values: list[str]) -> str | None:
     return None
 
 
+def _canonical_signal_value(
+    val: Any, allowed_values: list[str], bus_width: int | None = None
+) -> str | None:
+    """Return the canonical value for scalar or fixed-width bus input."""
+    if bus_width is None:
+        return _canonical_value(val, allowed_values)
+
+    displayed = _display_value(val)
+    if displayed is None or len(displayed) != bus_width:
+        return None
+
+    chars = []
+    for char in displayed:
+        canonical = _canonical_value(char, allowed_values)
+        if canonical is None:
+            return None
+        chars.append(canonical)
+    return "".join(chars)
+
+
 def _normalize_values(
     values: Any,
     sig_name: str,
@@ -276,7 +296,21 @@ def _normalize_signal(sig: Any, idx: int) -> dict[str, Any]:
             raise Exception(
                 f"pl-waveform: editable signal '{signal_key}' cannot define 'phase'"
             )
+        if "bus_width" in sig:
+            if (
+                not isinstance(sig["bus_width"], int)
+                or isinstance(sig["bus_width"], bool)
+                or sig["bus_width"] <= 0
+            ):
+                raise Exception(
+                    f"pl-waveform: editable signal '{signal_key}' must define 'bus_width' as a positive integer"
+                )
+            normalized["bus_width"] = sig["bus_width"]
     else:
+        if "bus_width" in sig:
+            raise Exception(
+                f"pl-waveform: non-editable signal '{signal_key}' cannot define 'bus_width'"
+            )
         for field in ("period", "phase"):
             if field in sig:
                 normalized[field] = sig[field]
@@ -310,10 +344,20 @@ def _normalize_signal(sig: Any, idx: int) -> dict[str, Any]:
         )
         correct_answers = body["values"]
         normalized["correct_answers"] = correct_answers
+        bus_width = normalized.get("bus_width")
+        if bus_width is not None:
+            for segment in (start, body, end):
+                for value in segment["values"]:
+                    if len(value) != bus_width:
+                        raise Exception(
+                            f"pl-waveform: editable signal '{signal_key}' has values entry '{value}' "
+                            f"with length {len(value)}; expected bus_width {bus_width}"
+                        )
+
         allowed_values = _get_allowed_values(normalized)
         # If any allowed or authored value is bus-like, render the whole row as
         # buses so digital-looking answers are not mixed with wire states.
-        force_bus = any(_normalize_value(value) not in VALID_VALUES for value in allowed_values) or any(
+        force_bus = bus_width is not None or any(_normalize_value(value) not in VALID_VALUES for value in allowed_values) or any(
             _normalize_value(value) not in VALID_VALUES
             for segment in (start, body, end)
             for value in segment["values"]
@@ -331,7 +375,7 @@ def _normalize_signal(sig: Any, idx: int) -> dict[str, Any]:
             normalized.pop("data", None)
 
         for answer_idx, value in enumerate(correct_answers, start=1):
-            if _canonical_value(value, allowed_values) is None:
+            if _canonical_signal_value(value, allowed_values, bus_width) is None:
                 raise Exception(
                     f"pl-waveform: editable signal '{signal_key}' has values entry '{value}' "
                     f"at cycle {answer_idx} that is not in allowed_values {allowed_values}"
@@ -374,9 +418,13 @@ def _get_allowed_values(sig: dict[str, Any]) -> list[str]:
     raw_allowed_values = sig.get("allowed_values")
     inferred = raw_allowed_values is None
     if raw_allowed_values is None:
-        raw_allowed_values = DEFAULT_BINARY_ALLOWED_VALUES + sig.get(
-            "correct_answers", []
-        )
+        correct_answers = sig.get("correct_answers", [])
+        if sig.get("bus_width") is None:
+            raw_allowed_values = DEFAULT_BINARY_ALLOWED_VALUES + correct_answers
+        else:
+            raw_allowed_values = DEFAULT_BINARY_ALLOWED_VALUES + [
+                char for answer in correct_answers for char in str(answer).strip()
+            ]
 
     if isinstance(raw_allowed_values, str):
         if raw_allowed_values.strip().lower() == "hex":
@@ -410,6 +458,11 @@ def _get_allowed_values(sig: dict[str, Any]) -> list[str]:
             raise Exception(
                 f"pl-waveform: editable signal '{sig['name']}' has blank allowed_values entry at position {idx}"
             )
+        if sig.get("bus_width") is not None and len(displayed) != 1:
+            raise Exception(
+                f"pl-waveform: editable signal '{sig['name']}' uses bus_width, so allowed_values entry "
+                f"'{displayed}' at position {idx} must be a single character"
+            )
         if normalized in seen:
             if inferred:
                 continue
@@ -423,7 +476,7 @@ def _get_allowed_values(sig: dict[str, Any]) -> list[str]:
     missing = [
         value
         for value in sig.get("correct_answers", [])
-        if _canonical_value(value, allowed_values) is None
+        if _canonical_signal_value(value, allowed_values, sig.get("bus_width")) is None
     ]
     if missing:
         raise Exception(
@@ -447,20 +500,35 @@ def _answer_value(raw: Any, from_json: bool = True) -> str | None:
 def _canonical_answer_value(
     raw: Any,
     allowed_values: list[str],
+    bus_width: int | None = None,
     from_json: bool = True,
 ) -> str | None:
     """Decode a raw answer and map it to an allowed display value."""
-    return _canonical_value(_answer_value(raw, from_json=from_json), allowed_values)
+    return _canonical_signal_value(
+        _answer_value(raw, from_json=from_json), allowed_values, bus_width
+    )
 
 
-def _is_invalid_submission(raw: Any, allowed_values: list[str]) -> bool:
+def _is_invalid_submission(
+    raw: Any, allowed_values: list[str], bus_width: int | None = None
+) -> bool:
     """Return whether a submitted value is outside the allowed values."""
     submitted = _answer_value(raw, from_json=True)
-    return submitted is not None and _canonical_value(submitted, allowed_values) is None
+    return (
+        submitted is not None
+        and _canonical_signal_value(submitted, allowed_values, bus_width) is None
+    )
 
 
-def _invalid_value_message(allowed_values: list[str]) -> str:
+def _invalid_value_message(
+    allowed_values: list[str], bus_width: int | None = None
+) -> str:
     """Build feedback text for an invalid submitted value."""
+    if bus_width is not None:
+        return (
+            f"Invalid value. Expected {bus_width} characters using: "
+            f"{', '.join(allowed_values)}."
+        )
     return f"Invalid value. Expected one of: {', '.join(allowed_values)}."
 
 
@@ -491,12 +559,13 @@ def _editable_cells(sig: dict[str, Any], answers_name: str) -> list[dict[str, An
     """Return the editable cell metadata for a signal."""
     cells = []
     allowed_values = _get_allowed_values(sig)
+    bus_width = sig.get("bus_width")
     for editable_index, abs_index in enumerate(
         [idx for idx, ch in enumerate(sig["wave"]) if ch == "x"],
         start=1,
     ):
-        correct_value = _canonical_value(
-            sig["correct_answers"][editable_index - 1], allowed_values
+        correct_value = _canonical_signal_value(
+            sig["correct_answers"][editable_index - 1], allowed_values, bus_width
         )
         if correct_value is None:
             correct_value = _display_value(sig["correct_answers"][editable_index - 1])
@@ -578,6 +647,7 @@ def _build_value_rendered_signal(
     """Render an editable signal using the submitted values."""
     s = dict(sig)
     allowed_values = _get_allowed_values(sig)
+    bus_width = sig.get("bus_width")
     wave_chars = list(sig["wave"])
     cells_by_abs_index = {
         cell["abs_index"]: cell for cell in _editable_cells(sig, answers_name)
@@ -589,6 +659,7 @@ def _build_value_rendered_signal(
             value_by_key[cell["key"]] = _canonical_answer_value(
                 answer_values.get(cell["key"], None),
                 allowed_values,
+                bus_width,
                 from_json=from_json,
             )
 
@@ -613,6 +684,7 @@ def _build_value_rendered_signal(
             val = _canonical_answer_value(
                 answer_values.get(cell["key"], None),
                 allowed_values,
+                bus_width,
                 from_json=from_json,
             )
             if val is None:
@@ -694,6 +766,7 @@ def _validate_signals(signals: Any, answers_name: str) -> None:
                 f"pl-waveform: editable signal '{signal_key}' must define 'correct_answers' as a list"
             )
         allowed_values = _get_allowed_values(sig)
+        bus_width = sig.get("bus_width")
 
         editable_cells = _editable_cells(sig, answers_name)
         if len(editable_cells) != len(correct_answers):
@@ -703,7 +776,7 @@ def _validate_signals(signals: Any, answers_name: str) -> None:
             )
 
         for cycle_idx, val in enumerate(correct_answers, start=1):
-            canonical = _canonical_value(val, allowed_values)
+            canonical = _canonical_signal_value(val, allowed_values, bus_width)
             if canonical is None:
                 raise Exception(
                     f"pl-waveform: editable signal '{signal_key}' has correct_answers value '{val}' "
@@ -767,6 +840,7 @@ def _question_editable_rows(
             continue
         sig_cells = _editable_cells(sig, answers_name)
         allowed_values = _get_allowed_values(sig)
+        bus_width = sig.get("bus_width")
         row_model_cells = []
         input_cells = []
         max_cycles = max(max_cycles, len(sig_cells))
@@ -779,10 +853,15 @@ def _question_editable_rows(
             ):
                 raw = "x"
             canonical_raw = _canonical_answer_value(
-                raw, allowed_values, from_json=False
+                raw, allowed_values, bus_width, from_json=False
             )
             value = canonical_raw or ""
             aria_label = f"{sig['signal_label']} cycle {cell['editable_index']} answer"
+            text_input_hint = (
+                f"Type {bus_width} characters using: {', '.join(allowed_values)}"
+                if bus_width is not None
+                else f"Type one of: {', '.join(allowed_values)}"
+            )
 
             input_cells.append(
                 {
@@ -799,8 +878,12 @@ def _question_editable_rows(
                     "text_mode": input_mode == "text",
                     "toggle_value": value,
                     "allowed_values_json": json.dumps(allowed_values),
-                    "text_input_hint": f"Type one of: {', '.join(allowed_values)}",
-                    "text_input_maxlength": max(len(value) for value in allowed_values),
+                    "bus_width": bus_width,
+                    "has_bus_width": bus_width is not None,
+                    "text_input_hint": text_input_hint,
+                    "text_input_maxlength": bus_width
+                    if bus_width is not None
+                    else max(len(value) for value in allowed_values),
                     "aria_label": aria_label,
                 }
             )
@@ -829,6 +912,7 @@ def _question_editable_rows(
                 "wave_length": len(sig["wave"]),
                 "data": sig.get("data", []),
                 "allowed_values": allowed_values,
+                "bus_width": bus_width,
                 "period": sig.get("period", 1),
                 "is_bus": sig.get("is_bus", False),
                 "cells": row_model_cells,
@@ -873,6 +957,7 @@ def _question_cell_scores(
         if not sig.get("editable", False):
             continue
         allowed_values = _get_allowed_values(sig)
+        bus_width = sig.get("bus_width")
         for cell in _editable_cells(sig, answers_name):
             score_data = data.get("partial_scores", {}).get(cell["key"])
             if score_data is None:
@@ -888,8 +973,12 @@ def _question_cell_scores(
                     "period": cell["period"],
                     "correct": score_data.get("score", 0) >= 1,
                     "incorrect": not is_unanswered and score_data.get("score", 0) < 1,
-                    "invalid": _is_invalid_submission(submitted_raw, allowed_values),
-                    "invalid_message": _invalid_value_message(allowed_values),
+                    "invalid": _is_invalid_submission(
+                        submitted_raw, allowed_values, bus_width
+                    ),
+                    "invalid_message": _invalid_value_message(
+                        allowed_values, bus_width
+                    ),
                     "unanswered": is_unanswered,
                 }
             )
@@ -988,6 +1077,7 @@ def _submission_render_params(
             continue
         sig_cells = _editable_cells(sig, answers_name)
         allowed_values = _get_allowed_values(sig)
+        bus_width = sig.get("bus_width")
         row_cells = []
         max_cycles = max(max_cycles, len(sig_cells))
         for cell in sig_cells:
@@ -1009,9 +1099,11 @@ def _submission_render_params(
                     "correct": score is not None and score >= 1,
                     "incorrect": not is_unanswered and score is not None and score < 1,
                     "invalid": format_error is not None
-                    or _is_invalid_submission(submitted_raw, allowed_values),
+                    or _is_invalid_submission(
+                        submitted_raw, allowed_values, bus_width
+                    ),
                     "invalid_message": format_error
-                    or _invalid_value_message(allowed_values),
+                    or _invalid_value_message(allowed_values, bus_width),
                     "unanswered": is_unanswered,
                 }
             )
@@ -1146,17 +1238,22 @@ def parse(element_html, data):
         if not sig.get("editable", False):
             continue
         allowed_values = _get_allowed_values(sig)
+        bus_width = sig.get("bus_width")
         for cell in _editable_cells(sig, answers_name):
             val = data["submitted_answers"].get(cell["key"], None)
             val_normalized = _normalize_value(val)
 
             if val_normalized is None:
                 data["submitted_answers"][cell["key"]] = None
-                format_errors[cell["key"]] = _invalid_value_message(allowed_values)
+                format_errors[cell["key"]] = _invalid_value_message(
+                    allowed_values, bus_width
+                )
             else:
-                canonical = _canonical_value(val, allowed_values)
-                if canonical is None and input_mode == "text":
-                    format_errors[cell["key"]] = _invalid_value_message(allowed_values)
+                canonical = _canonical_signal_value(val, allowed_values, bus_width)
+                if canonical is None and (input_mode == "text" or bus_width is not None):
+                    format_errors[cell["key"]] = _invalid_value_message(
+                        allowed_values, bus_width
+                    )
                     continue
                 format_errors.pop(cell["key"], None)
                 data["submitted_answers"][cell["key"]] = pl.to_json(

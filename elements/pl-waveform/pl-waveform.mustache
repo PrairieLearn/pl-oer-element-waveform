@@ -40,6 +40,7 @@
            data-abs-index="{{abs_index}}"
            data-period="{{period}}"
            data-allowed-values="{{allowed_values_json}}"
+           {{#has_bus_width}}data-bus-width="{{bus_width}}"{{/has_bus_width}}
            data-input-hint="{{text_input_hint}}"
            aria-label="{{aria_label}}"
            {{#has_raw_value}}value="{{{raw_value}}}"{{/has_raw_value}}
