@@ -759,8 +759,8 @@ function bindTextInputValidation() {
     $(document).on('input', '.pl-waveform-proxy[data-allowed-values]', function () {
         if (!isAllowedTextInputPrefix(this, this.value)) {
             rejectTextInputValue(this);
-        } else {
-            clearTextInputParseError(this);
+        } else if (hasValidControlValue(this)) {
+            clearTextInputParseError(this, true);
         }
         updateQuestionWaveDrom(this.closest('.pl-waveform'));
     });
@@ -816,11 +816,6 @@ function normalizeTextInputOnFocusChange(input) {
     var normalizedRaw = normalizeRawValue(input.value);
     if (normalizedRaw === '') {
         input.value = '';
-        if (getBusWidth(input)) {
-            showTextInputParseError(input, invalidTextInputMessage(input));
-        } else {
-            clearTextInputParseError(input);
-        }
         updateQuestionWaveDrom(input.closest('.pl-waveform'));
         return;
     }
@@ -832,7 +827,7 @@ function normalizeTextInputOnFocusChange(input) {
         return;
     }
 
-    clearTextInputParseError(input);
+    clearTextInputParseError(input, true);
     if (input.value !== normalized) {
         input.value = normalized;
         updateQuestionWaveDrom(input.closest('.pl-waveform'));
@@ -867,6 +862,15 @@ function invalidTextInputMessage(input) {
     return 'Invalid value. Expected one of: ' + label + '.';
 }
 
+/** Return whether a control currently contains a complete valid value. */
+function hasValidControlValue(control) {
+    return normalizeEditableValue(
+        control.value || control.getAttribute('data-value'),
+        getAllowedValues(control),
+        getBusWidth(control)
+    ) !== '';
+}
+
 /** Return an existing parse-error badge for a text input. */
 function getTextInputParseErrorBadge(input) {
     var container = input && input.closest('.pl-waveform');
@@ -878,9 +882,10 @@ function getTextInputParseErrorBadge(input) {
 }
 
 /** Remove persistent parse-error styling from a text input. */
-function clearTextInputParseError(input) {
+function clearTextInputParseError(input, clearInvalid) {
     if (!input) return;
     input.classList.remove('pl-waveform-control-error');
+    if (clearInvalid) input.classList.remove('pl-waveform-invalid');
     var badge = getTextInputParseErrorBadge(input);
     if (badge) badge.remove();
 }
@@ -1096,7 +1101,9 @@ function setRenderedCellValue(control, value, options) {
     }
     control.setAttribute('data-touched', touched ? 'true' : 'false');
     updateHitTargetMetadata(control, normalized);
-    control.classList.remove('pl-waveform-control-error', 'pl-waveform-invalid');
+    if (hasValidControlValue(control)) {
+        clearTextInputParseError(control, true);
+    }
 
     if (container) {
         updateQuestionWaveDrom(container);
