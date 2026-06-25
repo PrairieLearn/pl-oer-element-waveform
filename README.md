@@ -17,7 +17,7 @@ This element renders digital timing diagrams using the
 [WaveDrom library](https://wavedrom.com/) and allows students to fill in auto-gradable signals by toggling
 values via click or by entering their values.
 
-<img src="images/sampleWaveform.png" width="500">
+<img src="images/sampleWaveform.png" width="550">
 
 ### Example
 
@@ -82,7 +82,7 @@ data["params"]["signals"] = [
 ]
 ```
 
-<img src="images/simpleValues.png" width="500">
+<img src="images/simpleValues.png" width="350">
 
 The values `0`, `1`, `x`, and `z` render as ordinary digital states when the row only uses those values. If any value or editable `allowed_values` entry is outside that set, the whole row is rendered as labeled bus boxes, including `0`, `1`, `x`, and `z`.
 
@@ -98,7 +98,7 @@ data["params"]["signals"] = [
 ]
 ```
 
-<img src="images/startEndValues.png" width="500">
+<img src="images/startEndValues.png" width="600">
 
 Editable rows can define `period`, but not `phase`. By default, editable rows allow binary values plus every value in the solution `values` list (e.g., `z`, or any bus values). You can customize this and add more allowed values by defining a list of `allowed_values`; this list must include every solution value and cannot contain duplicates. The special string `"hex"` expands to `0` through `F`.
 
@@ -109,7 +109,7 @@ data["params"]["signals"] = [
 ]
 ```
 
-<img src="images/customAllowedValues.png" width="500">
+<img src="images/customAllowedValues.png" width="450">
 
 For `input-mode="text"`, you can also set a custom `bus_width`, which requires all inputs to have a specified integer size. This setting can be used for both binary values (which then become buses) and custom `allowed_values` (including `"hex"`). However, all items in `allowed_values` must be single characters if `bus_width` is set, and all `values` must have a size that matches the `bus_width`.
 
@@ -120,11 +120,11 @@ data["params"]["signals"] = [
 ]
 ```
 
-<img src="images/busWidthValues.png" width="500">
+<img src="images/busWidthValues.png" width="600">
 
 #### Advanced WaveDrom Syntax
 
-The `values` format above is the recommended authoring interface for those not familiar with WaveDrom's syntax. To use all of WaveDrom's customization abilities or import existing wave drawings, you can also use raw WaveDrom notation. This notation is defined via the `wave` key (and optionally `data` for buses).
+The `values` format above is the recommended authoring interface for those not familiar with [WaveDrom's syntax](https://wavedrom.com/tutorial.html). To use all of WaveDrom's customization abilities or import existing wave drawings, you can also use raw WaveDrom notation. This notation is defined via the `wave` key (and optionally `data` for buses).
 
 Non-editable rows can only use either `values` **or** `wave`/`data`. Editable rows cannot use `wave`/`data` for the answerable segment; they must use `values`. Their fixed start/end segments may use `start_wave`/`start_data` and `end_wave`/`end_data` when the context needs raw WaveDrom notation.
 
@@ -147,7 +147,7 @@ data["params"]["signals"] = [
 ]
 ```
 
-<img src="images/advancedWavedrom.png" width="500">
+<img src="images/advancedWavedrom.png" width="650">
 
 The `wave` key supports the following WaveDrom syntax:
 
@@ -164,4 +164,4 @@ The `wave` key supports the following WaveDrom syntax:
 
 For bus values, provide an additional `data` key that contains a list of strings with the bus labels. Note that `.` means that the previous bus is continued while `=`, `2`, `3`, and similar bus-state characters start a new bus, so the number of bus-state characters should match the number of items in `data`.
 
-Other `wave` [syntax](https://wavedrom.com/tutorial.html) may render, but should be used with caution. Advanced keys like `edge` or `node` are not currently supported.
+Other `wave` syntax may render, but should be used with caution. Advanced keys like `edge` or `node` are not currently supported.
