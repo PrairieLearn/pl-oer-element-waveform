@@ -1,15 +1,22 @@
 <pl-question-panel>
-    <h4>Part 1: D Flip-Flop</h4>
-    <p>Fill in the value of <code>Q</code> after each positive clock edge.</p>
+    <h4>Part 1: Default Binary Toggle Input</h4>
+    <p>
+        Fill in <code>Q</code> after each positive clock edge. This part uses
+        the default <code>signals-param="signals"</code>, default
+        <code>input-mode="toggle"</code>, a reference row authored with
+        <code>values</code>, and an editable row with fixed
+        <code>start_values</code>.
+    </p>
 </pl-question-panel>
 
 <pl-waveform answers-name="timing" hscale="1.5"></pl-waveform>
 
 <pl-question-panel>
     <hr>
-    <h4>Part 2: JK Flip-Flop</h4>
+    <h4>Part 2: Row-Level Feedback and Multiple Editable Rows</h4>
     <p>
         Complete <code>Q</code> and <code>Q'</code>. This part uses
+        <code>signals-param</code> to select a second signal set,
         <code>feedback="row"</code> to summarize correctness by signal.
     </p>
     <table class="table table-bordered" style="width: auto;">
@@ -27,7 +34,6 @@
 
 <pl-waveform
     answers-name="jk"
-    label="JK flip-flop"
     hscale="1.5"
     feedback="row"
     signals-param="jk_signals">
@@ -35,35 +41,35 @@
 
 <pl-question-panel>
     <hr>
-    <h4>Part 3: D Flip-Flop with Enable</h4>
+    <h4>Part 3: Element-Level Feedback</h4>
     <p>
         Complete <code>Q</code>. The output captures <code>D</code> only when
         <code>EN = 1</code>; otherwise it holds. This part uses
-        <code>feedback="table"</code>.
+        <code>feedback="element"</code> so both the question and submission
+        views summarize the score with a single whole-element overlay.
     </p>
 </pl-question-panel>
 
 <pl-waveform
     answers-name="enable"
-    label="D flip-flop with enable"
     hscale="1.5"
-    feedback="table"
+    feedback="element"
     signals-param="enable_signals">
 </pl-waveform>
 
 <pl-question-panel>
     <hr>
-    <h4>Part 4: Sub-Cycle AND Gate</h4>
+    <h4>Part 4: Text Input and Sub-Cycle Periods</h4>
     <p>
         Complete <code>Y = A &amp; B</code>. This part uses
-        <code>input-mode="text"</code> with <code>period="0.5"</code>, so two
-        answer boxes appear per clock period.
+        <code>input-mode="text"</code> while the reference and editable rows
+        use <code>period="0.5"</code>. The larger <code>hscale</code> leaves
+        room for the denser input rows.
     </p>
 </pl-question-panel>
 
 <pl-waveform
     answers-name="and_gate"
-    label="Sub-cycle AND gate"
     hscale="3"
     feedback="cell"
     input-mode="text"
@@ -72,28 +78,31 @@
 
 <pl-question-panel>
     <hr>
-    <h4>Part 5: Tri-State Buffer</h4>
+    <h4>Part 5: High-Impedance Values and Custom Allowed Values</h4>
     <p>
-        Complete <code>Y</code>. The output is <code>D</code> when
-        <code>EN = 1</code> and <code>x</code> otherwise.
+        Complete <code>Y</code>. This part uses <code>z</code> and <code>x</code>
+        in the editable <code>values</code> list and customizes
+        <code>allowed_values</code> so toggle mode cycles through both
+        high-impedance and unknown states. Note that allowing <code>x</code> also
+        effectively allows blank submissions for toggle inputs as all cells start
+        with the value <code>x</code>.
     </p>
 </pl-question-panel>
 
 <pl-waveform
     answers-name="tristate"
-    label="Tri-state buffer"
     hscale="1.5"
-    feedback="cell"
-    input-mode="text"
     signals-param="tristate_signals">
 </pl-waveform>
 
 <pl-question-panel>
     <hr>
-    <h4>Part 6: Register File Read</h4>
+    <h4>Part 6: Bus Rows and Hexadecimal Answers</h4>
     <p>
-        Complete the hexadecimal read data for each read port. This part uses
-        toggle input with hexadecimal <code>allowed_values</code>.
+        Complete the hexadecimal read data for each read port. The address
+        rows use advanced WaveDrom <code>wave</code>/<code>data</code> syntax
+        with <code>phase</code>, while the editable data rows use
+        <code>allowed_values="hex"</code> and text inputs.
     </p>
     <p>The register file begins with these values:</p>
     <table class="table table-bordered" style="width: auto;">
@@ -118,25 +127,79 @@
 
 <pl-waveform
     answers-name="reg_read"
-    label="Register file read"
-    hscale="3"
+    hscale="2.5"
     feedback="cell"
+    input-mode="text"
     signals-param="reg_read_signals">
 </pl-waveform>
 
 <pl-question-panel>
     <hr>
-    <h4>Part 7: Mixed Fixed and Editable Cells</h4>
+    <h4>Part 7: Fixed Start and End Segments</h4>
     <p>
-        Complete only the editable middle segment of <code>out</code>.
+        Complete only the editable middle segment of <code>out</code>. The
+        first and last cells are authored with <code>start_values</code> and
+        <code>end_values</code>, so they render as fixed context around the
+        answerable cells.
     </p>
 </pl-question-panel>
 
 <pl-waveform
     answers-name="mixed"
-    label="Mixed fixed/editable row"
     hscale="1.5"
     feedback="row"
     input-mode="text"
     signals-param="mixed_signals">
+</pl-waveform>
+
+<pl-question-panel>
+    <hr>
+    <h4>Part 8: Multi-Character Bus Text Input</h4>
+    <p>
+        Complete the decoded operation for each opcode. This part uses
+        multi-character bus values in an editable row with
+        <code>input-mode="text"</code>.
+    </p>
+</pl-question-panel>
+
+<pl-waveform
+    answers-name="decode"
+    hscale="2.5"
+    feedback="cell"
+    input-mode="text"
+    signals-param="decode_signals">
+</pl-waveform>
+
+<pl-question-panel>
+    <hr>
+    <h4>Part 9: Fixed-Width Bus Inputs</h4>
+    <p>
+        Complete each fixed-width value. This part uses <code>bus_width</code>
+        so the binary row accepts exactly four binary characters and the
+        hexadecimal row accepts exactly two hexadecimal characters.
+    </p>
+</pl-question-panel>
+
+<pl-waveform
+    answers-name="fixed_width"
+    hscale="3"
+    feedback="cell"
+    input-mode="text"
+    signals-param="fixed_width_signals">
+</pl-waveform>
+
+<pl-question-panel>
+    <hr>
+    <h4>Part 10: Formatted WaveDrom Names</h4>
+    <p>
+        Complete the inverted output. This part uses a WaveDrom-style array in
+        <code>name</code> to format the editable signal label.
+    </p>
+</pl-question-panel>
+
+<pl-waveform
+    answers-name="formatted"
+    hscale="1.5"
+    feedback="cell"
+    signals-param="formatted_name_signals">
 </pl-waveform>

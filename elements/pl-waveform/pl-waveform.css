@@ -7,8 +7,8 @@
     --pl-waveform-interactive-focus: rgba(13, 110, 253, 0.24);
     --pl-waveform-interactive-correct: rgba(40, 167, 69, 0.1);
     --pl-waveform-interactive-correct-border: rgba(40, 167, 69, 0.55);
-    --pl-waveform-interactive-incorrect: rgba(220, 53, 69, 0.1);
-    --pl-waveform-interactive-incorrect-border: rgba(220, 53, 69, 0.52);
+    --pl-waveform-interactive-incorrect: rgba(220, 53, 69, 0.055);
+    --pl-waveform-interactive-incorrect-border: rgba(220, 53, 69, 0.78);
     --pl-waveform-interactive-unanswered: rgba(108, 117, 125, 0.08);
     --pl-waveform-interactive-unanswered-border: rgba(108, 117, 125, 0.42);
     --pl-waveform-interactive-warning: rgba(255, 193, 7, 0.18);
@@ -39,7 +39,7 @@
     padding: 1px 2px;
     border: 1px solid rgba(108, 117, 125, 0.55);
     border-radius: 3px;
-    background-color: rgba(255, 255, 255, 0.9);
+    background-color: #fff;
     color: #212529;
     caret-color: #0d6efd;
     font-family: monospace;
@@ -59,7 +59,7 @@
 
 .pl-waveform-proxy:focus {
     border-color: #0d6efd;
-    background-color: rgba(255, 255, 255, 0.96);
+    background-color: #fff;
     box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
 }
 
@@ -90,18 +90,26 @@
 
 .pl-waveform-question-control.pl-waveform-incorrect {
     border-color: #dc3545;
-    background-color: rgba(248, 215, 218, 0.92);
+    background-color: rgba(248, 215, 218, 0.58);
 }
 
 .pl-waveform-question-control.pl-waveform-control-error {
     border-color: #ffc107 !important;
-    background-color: #fff3cd !important;
+    background-color: var(--pl-waveform-interactive-warning) !important;
 }
 
 .pl-waveform-question-control.pl-waveform-invalid {
     border-color: #ffc107 !important;
-    background: #fff3cd !important;
+    background: var(--pl-waveform-interactive-warning) !important;
     background-image: none !important;
+}
+
+.pl-waveform-proxy.pl-waveform-control-error {
+    background-color: #fff3cd !important;
+}
+
+.pl-waveform-proxy.pl-waveform-invalid {
+    background: #fff3cd !important;
 }
 
 .pl-waveform-question-control:disabled {
@@ -207,6 +215,35 @@
     border: 1px solid rgba(255, 193, 7, 0.8);
 }
 
+.pl-waveform-parse-error-corner {
+    top: 0;
+    right: 0;
+    width: 14px;
+    height: 14px;
+    transform: translate(20%, -20%);
+}
+
+.pl-waveform-parse-error-cell-overlay {
+    background-color: var(--pl-waveform-interactive-warning);
+    border: 1px solid var(--pl-waveform-interactive-warning-border);
+}
+
+.pl-waveform-parse-error-summary {
+    position: absolute;
+    z-index: 20;
+    padding: 5px 14px;
+    border-radius: 14px;
+    background-color: #f8d7da;
+    border: 1px solid #dc3545;
+    color: #721c24;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.4;
+    white-space: nowrap;
+    pointer-events: none;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
 /* ── Question panel: row score pills (feedback="row") ───────── */
 .pl-waveform-row-score-badge {
     position: absolute;
@@ -232,8 +269,8 @@
     border: 1px solid #f5c6cb;
 }
 
-/* ── Question panel: table score badge (feedback="table") ───── */
-.pl-waveform-table-score-badge {
+/* ── Whole-element score badge (feedback="element") ───── */
+.pl-waveform-element-score-badge {
     position: absolute;
     z-index: 20;
     font-size: 13px;
@@ -246,13 +283,13 @@
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
-.pl-waveform-table-score-correct {
+.pl-waveform-element-score-correct {
     background-color: #d4edda;
     color: #155724;
     border: 1px solid #c3e6cb;
 }
 
-.pl-waveform-table-score-incorrect {
+.pl-waveform-element-score-incorrect {
     background-color: #f8d7da;
     color: #721c24;
     border: 1px solid #f5c6cb;
@@ -295,88 +332,13 @@
     border: 1px solid #721c24;
 }
 
-
-/* ── Feedback table (feedback="cell") ────────────────────────── */
-.pl-waveform-feedback-table {
-    border-collapse: collapse;
-    margin-top: 0.75rem;
-    font-size: 0.875rem;
-}
-
-.pl-waveform-feedback-table th,
-.pl-waveform-feedback-table td {
-    border: 1px solid #dee2e6;
-    padding: 0.35rem 0.6rem;
-    text-align: center;
-    vertical-align: middle;
-}
-
-.pl-waveform-fb-cell {
-    min-width: 55px;
-}
-
-.pl-waveform-fb-cell-correct {
-    background-color: #d4edda;
-}
-
-.pl-waveform-fb-cell-incorrect {
-    background-color: #f8d7da;
-}
-
-.pl-waveform-fb-cell-invalid {
-    background-color: #fff3cd;
-}
-
-.pl-waveform-fb-submitted {
-    font-family: monospace;
-    font-weight: 600;
-}
-
-.pl-waveform-fb-invalid-note {
-    display: block;
-    font-size: 0.72rem;
-    color: #856404;
-    margin-top: 1px;
-}
-
-.pl-waveform-fb-expected {
-    display: block;
-    font-family: monospace;
-    font-size: 0.75rem;
-    color: #6c757d;
-    margin-top: 2px;
-}
-
-.pl-waveform-fb-expected::before {
-    content: "exp: ";
-}
-
-.pl-waveform-fb-icon {
-    display: block;
-    font-size: 0.7rem;
-    font-weight: 700;
-    margin-bottom: 1px;
-    line-height: 1;
-}
-
-.pl-waveform-fb-icon-correct {
-    color: #155724;
-}
-
-.pl-waveform-fb-icon-incorrect {
-    color: #721c24;
-}
-
-.pl-waveform-fb-icon-invalid {
-    color: #856404;
-}
-
 /* ── Shared waveform overlays ─────────────────────────────────── */
 .pl-waveform-feedback-overlay {
     position: absolute;
     z-index: 15;
     pointer-events: none;
     border-radius: 3px;
+    box-sizing: border-box;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -391,9 +353,18 @@
 }
 
 .pl-waveform-feedback-incorrect {
-    background-color: rgba(220, 53, 69, 0.12);
-    border-left: 3px solid #dc3545;
+    background-color: rgba(220, 53, 69, 0.055);
+    border: 1px solid var(--pl-waveform-interactive-incorrect-border);
     color: #721c24;
+}
+
+.pl-waveform-cell-feedback-overlay.pl-waveform-feedback-correct {
+    border-left: 0;
+    box-shadow: inset 0 0 0 1.5px var(--pl-waveform-interactive-correct-border);
+}
+
+.pl-waveform-cell-feedback-overlay.pl-waveform-feedback-incorrect {
+    border: 1px solid var(--pl-waveform-interactive-incorrect-border);
 }
 
 /* ── Row feedback (feedback="row") ───────────────────────────── */
@@ -424,50 +395,8 @@
 }
 
 .pl-waveform-row-incorrect {
-    background-color: #f8d7da;
-    border-left: 3px solid #dc3545;
-}
-
-.pl-waveform-row-badge-correct {
-    font-size: 0.8rem;
-    color: #155724;
-}
-
-.pl-waveform-row-badge-incorrect {
-    font-size: 0.8rem;
-    color: #721c24;
-}
-
-/* ── Overall summary bar (feedback="table") ─────────────────── */
-.pl-waveform-summary {
-    margin-top: 0.75rem;
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    max-width: 340px;
-}
-
-.pl-waveform-summary-text {
-    font-size: 0.875rem;
-    font-weight: 600;
-    white-space: nowrap;
-    color: #495057;
-}
-
-.pl-waveform-summary-bar {
-    flex: 1;
-    min-width: 160px;
-    height: 8px;
-    background-color: #e9ecef;
-    border-radius: 4px;
-    overflow: hidden;
-}
-
-.pl-waveform-summary-fill {
-    height: 100%;
-    background-color: #28a745;
-    border-radius: 4px;
-    transition: width 0.3s ease;
+    background-color: rgba(220, 53, 69, 0.055);
+    border: 1px solid var(--pl-waveform-interactive-incorrect-border);
 }
 
 /* ── Diff markers (answer panel) ──────────────────────────────── */
@@ -477,8 +406,8 @@
     font-size: 10px;
     font-family: monospace;
     color: #dc3545;
-    background: rgba(220, 53, 69, 0.1);
-    border: 1px solid rgba(220, 53, 69, 0.3);
+    background: rgba(220, 53, 69, 0.055);
+    border: 1px solid var(--pl-waveform-interactive-incorrect-border);
     border-radius: 3px;
     padding: 1px 4px;
     pointer-events: auto;
@@ -487,30 +416,7 @@
 }
 
 .pl-waveform-diff-marker:hover {
-    background: rgba(220, 53, 69, 0.2);
-}
-
-/* ── Submission section wrapper ───────────────────────────────── */
-.pl-waveform-submission-section {
-    border: 1px solid #dee2e6;
-    border-radius: 6px;
-    padding: 0.75rem 1rem;
-    margin-bottom: 1rem;
-    background-color: #fafafa;
-}
-
-.pl-waveform-submission-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 0.5rem;
-    padding-bottom: 0.4rem;
-    border-bottom: 1px solid #e9ecef;
-}
-
-.pl-waveform-submission-label {
-    font-weight: 600;
-    color: #212529;
+    background: rgba(220, 53, 69, 0.085);
 }
 
 /* ── Answer panel ─────────────────────────────────────────────── */
