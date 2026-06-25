@@ -105,7 +105,7 @@ data["params"]["signals"] = [
 ]
 ```
 
-You can also set a custom `bus_width`, which requires all inputs to have a specified integer size. This setting can be used for both binary values (which then become buses) and custom `allowed_values` (including `"hex"`). However, all items in `allowed_values` must be single characters if `bus_width` is set, and all `values` must have a size that matches the `bus_width`.
+For `input-mode="text"`, you can also set a custom `bus_width`, which requires all inputs to have a specified integer size. This setting can be used for both binary values (which then become buses) and custom `allowed_values` (including `"hex"`). However, all items in `allowed_values` must be single characters if `bus_width` is set, and all `values` must have a size that matches the `bus_width`.
 
 ```python
 data["params"]["signals"] = [

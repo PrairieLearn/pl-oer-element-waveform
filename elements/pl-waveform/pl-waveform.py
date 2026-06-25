@@ -487,6 +487,17 @@ def _get_allowed_values(sig: dict[str, Any]) -> list[str]:
     return allowed_values
 
 
+def _allowed_values_label(sig: dict[str, Any], allowed_values: list[str]) -> str:
+    """Return the student-facing description for allowed values."""
+    raw_allowed_values = sig.get("allowed_values")
+    if isinstance(raw_allowed_values, str) and raw_allowed_values.strip().lower() == "hex":
+        return "hexadecimal"
+    normalized = [_normalize_value(value) for value in allowed_values]
+    if len(normalized) == 2 and set(normalized) == {"0", "1"}:
+        return "binary"
+    return ", ".join(allowed_values)
+
+
 def _answer_value(raw: Any, from_json: bool = True) -> str | None:
     """Decode and display a raw submitted answer value."""
     if raw is None:
@@ -521,15 +532,23 @@ def _is_invalid_submission(
 
 
 def _invalid_value_message(
-    allowed_values: list[str], bus_width: int | None = None
+    allowed_values: list[str],
+    bus_width: int | None = None,
+    allowed_values_label: str | None = None,
 ) -> str:
     """Build feedback text for an invalid submitted value."""
+    label = allowed_values_label or ", ".join(allowed_values)
     if bus_width is not None:
-        return (
-            f"Invalid value. Expected {bus_width} characters using: "
-            f"{', '.join(allowed_values)}."
-        )
-    return f"Invalid value. Expected one of: {', '.join(allowed_values)}."
+        if label == "hexadecimal":
+            return f"Invalid value. Expected {bus_width} hexadecimal characters."
+        if label == "binary":
+            return f"Invalid value. Expected {bus_width} binary characters."
+        return f"Invalid value. Expected {bus_width} characters using {label}."
+    if label == "hexadecimal":
+        return "Invalid value. Expected hexadecimal."
+    if label == "binary":
+        return "Invalid value. Expected binary."
+    return f"Invalid value. Expected one of: {label}."
 
 
 def _build_wavedrom(signals: list[dict[str, Any]], hscale: float) -> str:
@@ -809,6 +828,17 @@ def prepare(element_html, data):
         raise Exception(
             f"pl-waveform: invalid input-mode '{input_mode}'. Must be one of {INPUT_MODE_OPTIONS}"
         )
+    if input_mode != "text":
+        bus_width_signals = [
+            sig["signal_label"]
+            for sig in signals
+            if sig.get("editable", False) and "bus_width" in sig
+        ]
+        if bus_width_signals:
+            raise Exception(
+                "pl-waveform: editable signals with 'bus_width' require input-mode=\"text\"; "
+                f"found {bus_width_signals}"
+            )
 
     _validate_signals(signals, answers_name)
 
@@ -840,6 +870,7 @@ def _question_editable_rows(
             continue
         sig_cells = _editable_cells(sig, answers_name)
         allowed_values = _get_allowed_values(sig)
+        allowed_values_label = _allowed_values_label(sig, allowed_values)
         bus_width = sig.get("bus_width")
         row_model_cells = []
         input_cells = []
@@ -857,11 +888,24 @@ def _question_editable_rows(
             )
             value = canonical_raw or ""
             aria_label = f"{sig['signal_label']} cycle {cell['editable_index']} answer"
-            text_input_hint = (
-                f"Type {bus_width} characters using: {', '.join(allowed_values)}"
-                if bus_width is not None
-                else f"Type one of: {', '.join(allowed_values)}"
-            )
+            if allowed_values_label == "hexadecimal":
+                text_input_hint = (
+                    f"Type {bus_width} hexadecimal characters"
+                    if bus_width is not None
+                    else "Type a hexadecimal value"
+                )
+            elif allowed_values_label == "binary":
+                text_input_hint = (
+                    f"Type {bus_width} binary characters"
+                    if bus_width is not None
+                    else "Type a binary value"
+                )
+            else:
+                text_input_hint = (
+                    f"Type {bus_width} characters using {allowed_values_label}"
+                    if bus_width is not None
+                    else f"Type one of: {allowed_values_label}"
+                )
 
             input_cells.append(
                 {
@@ -878,6 +922,7 @@ def _question_editable_rows(
                     "text_mode": input_mode == "text",
                     "toggle_value": value,
                     "allowed_values_json": json.dumps(allowed_values),
+                    "allowed_values_label": allowed_values_label,
                     "bus_width": bus_width,
                     "has_bus_width": bus_width is not None,
                     "text_input_hint": text_input_hint,
@@ -957,6 +1002,7 @@ def _question_cell_scores(
         if not sig.get("editable", False):
             continue
         allowed_values = _get_allowed_values(sig)
+        allowed_values_label = _allowed_values_label(sig, allowed_values)
         bus_width = sig.get("bus_width")
         for cell in _editable_cells(sig, answers_name):
             score_data = data.get("partial_scores", {}).get(cell["key"])
@@ -977,7 +1023,7 @@ def _question_cell_scores(
                         submitted_raw, allowed_values, bus_width
                     ),
                     "invalid_message": _invalid_value_message(
-                        allowed_values, bus_width
+                        allowed_values, bus_width, allowed_values_label
                     ),
                     "unanswered": is_unanswered,
                 }
@@ -1077,6 +1123,7 @@ def _submission_render_params(
             continue
         sig_cells = _editable_cells(sig, answers_name)
         allowed_values = _get_allowed_values(sig)
+        allowed_values_label = _allowed_values_label(sig, allowed_values)
         bus_width = sig.get("bus_width")
         row_cells = []
         max_cycles = max(max_cycles, len(sig_cells))
@@ -1103,7 +1150,9 @@ def _submission_render_params(
                         submitted_raw, allowed_values, bus_width
                     ),
                     "invalid_message": format_error
-                    or _invalid_value_message(allowed_values, bus_width),
+                    or _invalid_value_message(
+                        allowed_values, bus_width, allowed_values_label
+                    ),
                     "unanswered": is_unanswered,
                 }
             )
@@ -1238,6 +1287,7 @@ def parse(element_html, data):
         if not sig.get("editable", False):
             continue
         allowed_values = _get_allowed_values(sig)
+        allowed_values_label = _allowed_values_label(sig, allowed_values)
         bus_width = sig.get("bus_width")
         for cell in _editable_cells(sig, answers_name):
             val = data["submitted_answers"].get(cell["key"], None)
@@ -1246,13 +1296,13 @@ def parse(element_html, data):
             if val_normalized is None:
                 data["submitted_answers"][cell["key"]] = None
                 format_errors[cell["key"]] = _invalid_value_message(
-                    allowed_values, bus_width
+                    allowed_values, bus_width, allowed_values_label
                 )
             else:
                 canonical = _canonical_signal_value(val, allowed_values, bus_width)
                 if canonical is None and (input_mode == "text" or bus_width is not None):
                     format_errors[cell["key"]] = _invalid_value_message(
-                        allowed_values, bus_width
+                        allowed_values, bus_width, allowed_values_label
                     )
                     continue
                 format_errors.pop(cell["key"], None)

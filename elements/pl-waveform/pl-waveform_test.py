@@ -330,7 +330,7 @@ def test_text_input_invalid_values_report_format_errors_during_parse() -> None:
     pl_waveform.prepare(element_html, data)
     pl_waveform.parse(element_html, data)
 
-    invalid_message = "Invalid value. Expected one of: 0, 1."
+    invalid_message = "Invalid value. Expected binary."
     assert data["correct_answers"] == {
         "timing_Q_1": "1",
         "timing_Q_2": "0",
@@ -406,7 +406,7 @@ def test_blank_cells_report_format_errors_during_parse() -> None:
     _prepare_parse_grade(element_html, data)
     rendered = _render(element_html, data)
 
-    invalid_message = "Invalid value. Expected one of: 0, 1."
+    invalid_message = "Invalid value. Expected binary."
     assert data["format_errors"] == {"part1_Q_2": invalid_message}
     assert data["partial_scores"] == {}
     assert rendered["has_parse_errors"] is True
@@ -648,6 +648,45 @@ def test_text_mode_metadata_supports_single_and_multicharacter_values() -> None:
     assert row_model["allowed_values"] == ["IDLE", "LOAD", "STORE", "HOLD"]
 
 
+def test_text_mode_metadata_labels_exact_binary_values_compactly() -> None:
+    element_html = '<pl-waveform answers-name="binary" input-mode="text"></pl-waveform>'
+    data = _base_data(
+        [
+            {"name": "Q", "editable": True, "values": ["0", "1"]},
+            {
+                "name": "wide",
+                "editable": True,
+                "values": ["10", "01"],
+                "bus_width": 2,
+            },
+            {
+                "name": "reversed",
+                "editable": True,
+                "values": ["1", "0"],
+                "allowed_values": ["1", "0"],
+            },
+            {
+                "name": "with_x",
+                "editable": True,
+                "values": ["1", "0"],
+                "allowed_values": ["0", "1", "x"],
+            },
+        ]
+    )
+
+    rendered = _render(element_html, data)
+    rows = rendered["editable_rows"]
+
+    assert rows[0]["cells"][0]["text_input_hint"] == "Type a binary value"
+    assert rows[0]["cells"][0]["allowed_values_label"] == "binary"
+    assert rows[1]["cells"][0]["text_input_hint"] == "Type 2 binary characters"
+    assert rows[1]["cells"][0]["allowed_values_label"] == "binary"
+    assert rows[2]["cells"][0]["text_input_hint"] == "Type a binary value"
+    assert rows[2]["cells"][0]["allowed_values_label"] == "binary"
+    assert rows[3]["cells"][0]["text_input_hint"] == "Type one of: 0, 1, x"
+    assert rows[3]["cells"][0]["allowed_values_label"] == "0, 1, x"
+
+
 def test_hex_allowed_values_grade_case_insensitively_and_render_as_bus() -> None:
     element_html = '<pl-waveform answers-name="hex" input-mode="text"></pl-waveform>'
     data = _base_data(
@@ -680,6 +719,12 @@ def test_hex_allowed_values_grade_case_insensitively_and_render_as_bus() -> None
     assert waveform["signal"][1]["data"] == ["A", "F"]
     assert rendered["result_rows"][0]["cells"][0]["submitted"] == "A"
 
+    data["panel"] = "question"
+    rendered_question = _render(element_html, data)
+    assert rendered_question["editable_rows"][0]["cells"][0]["text_input_hint"] == (
+        "Type a hexadecimal value"
+    )
+
 
 def test_bus_width_uses_allowed_values_as_a_character_alphabet() -> None:
     element_html = '<pl-waveform answers-name="wide" input-mode="text"></pl-waveform>'
@@ -711,14 +756,20 @@ def test_bus_width_uses_allowed_values_as_a_character_alphabet() -> None:
     assert waveform["signal"][0]["data"] == ["DE", "AD"]
     assert rendered["result_rows"][0]["cells"][0]["submitted"] == "DE"
 
+    data["panel"] = "question"
+    rendered_question = _render(element_html, data)
+    assert rendered_question["editable_rows"][0]["cells"][0]["text_input_hint"] == (
+        "Type 2 hexadecimal characters"
+    )
+
 
 @pytest.mark.parametrize(
     ("submitted", "message"),
     [
-        ("D", "Expected 2 characters"),
-        ("DOG", "Expected 2 characters"),
-        ("DG", "Expected 2 characters"),
-        ("", "Expected 2 characters"),
+        ("D", "Expected 2 hexadecimal characters"),
+        ("DOG", "Expected 2 hexadecimal characters"),
+        ("DG", "Expected 2 hexadecimal characters"),
+        ("", "Expected 2 hexadecimal characters"),
     ],
 )
 def test_bus_width_invalid_text_values_report_format_errors(
@@ -744,6 +795,24 @@ def test_bus_width_invalid_text_values_report_format_errors(
     assert "wide_byte_1" in data["format_errors"]
     assert message in data["format_errors"]["wide_byte_1"]
     assert data["partial_scores"] == {}
+
+
+def test_bus_width_requires_text_input_mode() -> None:
+    element_html = '<pl-waveform answers-name="wide"></pl-waveform>'
+    data = _base_data(
+        [
+            {
+                "name": "byte",
+                "editable": True,
+                "values": ["DE"],
+                "allowed_values": "hex",
+                "bus_width": 2,
+            },
+        ],
+    )
+
+    with pytest.raises(Exception, match='input-mode="text"'):
+        pl_waveform.prepare(element_html, data)
 
 
 @pytest.mark.parametrize(

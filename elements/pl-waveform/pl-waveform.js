@@ -852,10 +852,19 @@ function rejectTextInputValue(input) {
 /** Return the invalid-value message for a text input. */
 function invalidTextInputMessage(input) {
     var busWidth = getBusWidth(input);
+    var label = input.getAttribute('data-allowed-values-label') || getAllowedValues(input).join(', ');
     if (busWidth) {
-        return 'Invalid value. Expected ' + busWidth + ' characters using: ' + getAllowedValues(input).join(', ') + '.';
+        if (label === 'hexadecimal') {
+            return 'Invalid value. Expected ' + busWidth + ' hexadecimal characters.';
+        }
+        if (label === 'binary') {
+            return 'Invalid value. Expected ' + busWidth + ' binary characters.';
+        }
+        return 'Invalid value. Expected ' + busWidth + ' characters using ' + label + '.';
     }
-    return 'Invalid value. Expected one of: ' + getAllowedValues(input).join(', ') + '.';
+    if (label === 'hexadecimal') return 'Invalid value. Expected hexadecimal.';
+    if (label === 'binary') return 'Invalid value. Expected binary.';
+    return 'Invalid value. Expected one of: ' + label + '.';
 }
 
 /** Return an existing parse-error badge for a text input. */
