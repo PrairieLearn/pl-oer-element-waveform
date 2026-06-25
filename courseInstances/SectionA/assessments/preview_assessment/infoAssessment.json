@@ -12,7 +12,7 @@
     ],
     "zones": [
         {
-	    "title": "Element preview", 
+            "title": "Element preview",
             "questions": [
                 { "id": "waveformDemo",           "points": 1}
             ]

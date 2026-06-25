@@ -82,6 +82,8 @@ data["params"]["signals"] = [
 ]
 ```
 
+<img src="images/simpleValues.png" width="500">
+
 The values `0`, `1`, `x`, and `z` render as ordinary digital states when the row only uses those values. If any value or editable `allowed_values` entry is outside that set, the whole row is rendered as labeled bus boxes, including `0`, `1`, `x`, and `z`.
 
 The element also supports `period` for all rows and `phase` for non-editable rows. These attributes are passed through to WaveDrom. The total row duration (after `period` scaling) must match across rows.
@@ -96,6 +98,8 @@ data["params"]["signals"] = [
 ]
 ```
 
+<img src="images/startEndValues.png" width="500">
+
 Editable rows can define `period`, but not `phase`. By default, editable rows allow binary values plus every value in the solution `values` list (e.g., `z`, or any bus values). You can customize this and add more allowed values by defining a list of `allowed_values`; this list must include every solution value and cannot contain duplicates. The special string `"hex"` expands to `0` through `F`.
 
 ```python
@@ -104,6 +108,8 @@ data["params"]["signals"] = [
     {"name": "hex", "editable": True, "values": ["A", "B", "C"], "allowed_values": "hex"},
 ]
 ```
+
+<img src="images/customAllowedValues.png" width="500">
 
 For `input-mode="text"`, you can also set a custom `bus_width`, which requires all inputs to have a specified integer size. This setting can be used for both binary values (which then become buses) and custom `allowed_values` (including `"hex"`). However, all items in `allowed_values` must be single characters if `bus_width` is set, and all `values` must have a size that matches the `bus_width`.
 
@@ -114,9 +120,11 @@ data["params"]["signals"] = [
 ]
 ```
 
+<img src="images/busWidthValues.png" width="500">
+
 #### Advanced WaveDrom Syntax
 
-The `values` format above is the recommended authoring interface for those not familiar with WaveDrom's syntax. To use all of WaveDrom's customization abilities or import existing wave drawings, you can also use raw WaveDrom notation. This notation is defined via the `wave` key (and optionally `data` for buses). 
+The `values` format above is the recommended authoring interface for those not familiar with WaveDrom's syntax. To use all of WaveDrom's customization abilities or import existing wave drawings, you can also use raw WaveDrom notation. This notation is defined via the `wave` key (and optionally `data` for buses).
 
 Non-editable rows can only use either `values` **or** `wave`/`data`. Editable rows cannot use `wave`/`data` for the answerable segment; they must use `values`. Their fixed start/end segments may use `start_wave`/`start_data` and `end_wave`/`end_data` when the context needs raw WaveDrom notation.
 
@@ -132,12 +140,14 @@ data["params"]["signals"] = [
         "editable": True,
         "start_wave": "=.",       # pre-rendered bus for 2 periods
         "start_data": ["held"],   # pre-rendered bus label
-        "values": ["A", "B"],     # correct answer for student-defined segment 
+        "values": ["A", "B"],     # correct answer for student-defined segment
         "allowed_values": "hex",  # allowed inputs for the student-defined segment
         "end_wave": "0.",         # pre-rendered low state for 2 periods
     },
 ]
 ```
+
+<img src="images/advancedWavedrom.png" width="500">
 
 The `wave` key supports the following WaveDrom syntax:
 
