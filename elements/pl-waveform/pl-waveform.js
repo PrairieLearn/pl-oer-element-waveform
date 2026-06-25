@@ -848,17 +848,10 @@ function rejectTextInputValue(input) {
 function invalidTextInputMessage(input) {
     var busWidth = getBusWidth(input);
     var label = input.getAttribute('data-allowed-values-label') || getAllowedValues(input).join(', ');
-    if (busWidth) {
-        if (label === 'hexadecimal') {
-            return 'Invalid value. Expected ' + busWidth + ' hexadecimal characters.';
-        }
-        if (label === 'binary') {
-            return 'Invalid value. Expected ' + busWidth + ' binary characters.';
-        }
-        return 'Invalid value. Expected ' + busWidth + ' characters using ' + label + '.';
+    if (label === 'hexadecimal' || label === 'binary') {
+        return 'Invalid value. Expected ' + expected + '.';
     }
-    if (label === 'hexadecimal') return 'Invalid value. Expected hexadecimal.';
-    if (label === 'binary') return 'Invalid value. Expected binary.';
+    if (busWidth) return 'Invalid value. Expected ' + busWidth + ' characters using ' + label + '.';
     return 'Invalid value. Expected one of: ' + label + '.';
 }
 

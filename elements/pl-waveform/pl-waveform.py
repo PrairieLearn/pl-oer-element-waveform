@@ -538,16 +538,11 @@ def _invalid_value_message(
 ) -> str:
     """Build feedback text for an invalid submitted value."""
     label = allowed_values_label or ", ".join(allowed_values)
+    if label in {"hexadecimal", "binary"}:
+        expected = f"{bus_width} {label} characters" if bus_width else label
+        return f"Invalid value. Expected {expected}."
     if bus_width is not None:
-        if label == "hexadecimal":
-            return f"Invalid value. Expected {bus_width} hexadecimal characters."
-        if label == "binary":
-            return f"Invalid value. Expected {bus_width} binary characters."
         return f"Invalid value. Expected {bus_width} characters using {label}."
-    if label == "hexadecimal":
-        return "Invalid value. Expected hexadecimal."
-    if label == "binary":
-        return "Invalid value. Expected binary."
     return f"Invalid value. Expected one of: {label}."
 
 
@@ -888,17 +883,11 @@ def _question_editable_rows(
             )
             value = canonical_raw or ""
             aria_label = f"{sig['signal_label']} cycle {cell['editable_index']} answer"
-            if allowed_values_label == "hexadecimal":
+            if allowed_values_label in {"hexadecimal", "binary"}:
                 text_input_hint = (
-                    f"Type {bus_width} hexadecimal characters"
+                    f"Type {bus_width} {allowed_values_label} characters"
                     if bus_width is not None
-                    else "Type a hexadecimal value"
-                )
-            elif allowed_values_label == "binary":
-                text_input_hint = (
-                    f"Type {bus_width} binary characters"
-                    if bus_width is not None
-                    else "Type a binary value"
+                    else f"Type a {allowed_values_label} value"
                 )
             else:
                 text_input_hint = (
