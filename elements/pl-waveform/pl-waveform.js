@@ -849,6 +849,7 @@ function invalidTextInputMessage(input) {
     var busWidth = getBusWidth(input);
     var label = input.getAttribute('data-allowed-values-label') || getAllowedValues(input).join(', ');
     if (label === 'hexadecimal' || label === 'binary') {
+        var expected = busWidth ? (busWidth + ' ' + label + ' characters') : label;
         return 'Invalid value. Expected ' + expected + '.';
     }
     if (busWidth) return 'Invalid value. Expected ' + busWidth + ' characters using ' + label + '.';
