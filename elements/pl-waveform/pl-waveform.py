@@ -51,7 +51,14 @@ def _get_signals(element: Any, data: dict[str, Any]) -> list[dict[str, Any]]:
     signals_param = pl.get_string_attrib(
         element, "signals-param", SIGNALS_PARAM_DEFAULT
     )
-    return _normalize_signals(data["params"].get(signals_param, []))
+    params = data["params"]
+    if signals_param not in params:
+        available = ", ".join(sorted(params)) or "none"
+        raise Exception(
+            f"pl-waveform: signals-param='{signals_param}' was not found in data['params']; "
+            f"available keys: {available}"
+        )
+    return _normalize_signals(params[signals_param])
 
 
 def _normalize_value(val: Any) -> str | None:

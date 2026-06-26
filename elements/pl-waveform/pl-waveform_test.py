@@ -918,6 +918,29 @@ def test_unknown_feedback_mode_is_rejected() -> None:
         pl_waveform.prepare(element_html, data)
 
 
+@pytest.mark.parametrize(
+    ("element_html", "params", "message"),
+    [
+        (
+            '<pl-waveform answers-name="part1"></pl-waveform>',
+            {"wave": [{"name": "D", "editable": False, "values": [0]}]},
+            "signals-param='signals'.*available keys: wave",
+        ),
+        (
+            '<pl-waveform answers-name="part1" signals-param="expected"></pl-waveform>',
+            {"signals": [{"name": "D", "editable": False, "values": [0]}]},
+            "signals-param='expected'.*available keys: signals",
+        ),
+    ],
+)
+def test_missing_signals_param_is_rejected(element_html, params, message) -> None:
+    data = _base_data([])
+    data["params"] = params
+
+    with pytest.raises(Exception, match=message):
+        pl_waveform.prepare(element_html, data)
+
+
 def test_waveform_demo_signal_sets_match_the_current_element_contract() -> None:
     spec = importlib.util.spec_from_file_location(
         "waveform_demo_server", COURSE_DIR / "questions/waveformDemo/server.py"
