@@ -664,6 +664,7 @@ def _build_value_rendered_signal(
     answers_name: str,
     answer_values: dict[str, Any],
     from_json: bool = True,
+    show_editable_bus_values: bool = True,
 ) -> dict[str, Any]:
     """Render an editable signal using the submitted values."""
     s = dict(sig)
@@ -682,7 +683,7 @@ def _build_value_rendered_signal(
                 allowed_values,
                 bus_width,
                 from_json=from_json,
-            )
+            ) if show_editable_bus_values else None
 
         wave, data_values = _build_editable_bus_wave_and_data(
             wave_chars,
@@ -1047,15 +1048,15 @@ def _question_render_params(
     for sig in signals:
         rendered = (
             _build_value_rendered_signal(
-                sig, answers_name, data["raw_submitted_answers"], from_json=False
+                sig,
+                answers_name,
+                data["raw_submitted_answers"],
+                from_json=False,
+                show_editable_bus_values=input_mode != "text",
             )
             if sig.get("editable")
             else dict(sig)
         )
-        # Text inputs sit over the bus cells, so WaveDrom's own data labels are
-        # hidden in the question panel but kept for submission/answer panels.
-        if input_mode == "text" and sig.get("editable") and sig.get("is_bus"):
-            rendered.pop("data", None)
         question_signals.append(rendered)
     parse_error_cells = _parse_error_cells(signals, answers_name, data)
     parse_errors = {cell["key"]: cell["message"] for cell in parse_error_cells}
