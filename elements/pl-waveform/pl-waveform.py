@@ -678,12 +678,16 @@ def _build_value_rendered_signal(
     if sig.get("is_bus"):
         value_by_key = {}
         for cell in cells_by_abs_index.values():
-            value_by_key[cell["key"]] = _canonical_answer_value(
-                answer_values.get(cell["key"], None),
-                allowed_values,
-                bus_width,
-                from_json=from_json,
-            ) if show_editable_bus_values else None
+            value_by_key[cell["key"]] = (
+                _canonical_answer_value(
+                    answer_values.get(cell["key"], None),
+                    allowed_values,
+                    bus_width,
+                    from_json=from_json,
+                )
+                if show_editable_bus_values
+                else None
+            )
 
         wave, data_values = _build_editable_bus_wave_and_data(
             wave_chars,
