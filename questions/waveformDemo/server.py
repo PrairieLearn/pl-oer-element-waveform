@@ -216,14 +216,8 @@ def generate(data):
         },
     ]
 
-    nibble_values = [
-        "".join(random.choices(binary_values, k=4))
-        for _ in range(4)
-    ]
-    hex_byte_values = [
-        "".join(random.choices(HEX_VALUES, k=2))
-        for _ in range(4)
-    ]
+    nibble_values = ["".join(random.choices(binary_values, k=4)) for _ in range(4)]
+    hex_byte_values = ["".join(random.choices(HEX_VALUES, k=2)) for _ in range(4)]
     data["params"]["fixed_width_signals"] = [
         {
             "name": "bin[3:0]",
@@ -241,7 +235,9 @@ def generate(data):
     ]
 
     formatted_input_values = random.choices(binary_values, k=4)
-    formatted_output_values = ["1" if value == "0" else "0" for value in formatted_input_values]
+    formatted_output_values = [
+        "1" if value == "0" else "0" for value in formatted_input_values
+    ]
     data["params"]["formatted_name_signals"] = [
         {"name": "clk", "editable": False, "wave": "lP.."},
         {"name": "input", "editable": False, "values": formatted_input_values},

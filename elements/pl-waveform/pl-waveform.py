@@ -151,7 +151,9 @@ def _encode_values(values: list[str], force_bus: bool = False) -> tuple[str, lis
 
     for value in values:
         normalized = _normalize_value(value)
-        encoded = "=" if force_bus else normalized if normalized in VALID_VALUES else "="
+        encoded = (
+            "=" if force_bus else normalized if normalized in VALID_VALUES else "="
+        )
         if encoded == previous or (encoded == "=" and value == previous):
             wave.append(".")
         else:
@@ -357,10 +359,16 @@ def _normalize_signal(sig: Any, idx: int) -> dict[str, Any]:
         allowed_values = _get_allowed_values(normalized)
         # If any allowed or authored value is bus-like, render the whole row as
         # buses so digital-looking answers are not mixed with wire states.
-        force_bus = bus_width is not None or any(_normalize_value(value) not in VALID_VALUES for value in allowed_values) or any(
-            _normalize_value(value) not in VALID_VALUES
-            for segment in (start, body, end)
-            for value in segment["values"]
+        force_bus = (
+            bus_width is not None
+            or any(
+                _normalize_value(value) not in VALID_VALUES for value in allowed_values
+            )
+            or any(
+                _normalize_value(value) not in VALID_VALUES
+                for segment in (start, body, end)
+                for value in segment["values"]
+            )
         )
         start, body, end = _encode_value_segments_as_bus((start, body, end), force_bus)
         correct_wave, correct_data = _combine_segments(start, body, end)
@@ -490,7 +498,10 @@ def _get_allowed_values(sig: dict[str, Any]) -> list[str]:
 def _allowed_values_label(sig: dict[str, Any], allowed_values: list[str]) -> str:
     """Return the student-facing description for allowed values."""
     raw_allowed_values = sig.get("allowed_values")
-    if isinstance(raw_allowed_values, str) and raw_allowed_values.strip().lower() == "hex":
+    if (
+        isinstance(raw_allowed_values, str)
+        and raw_allowed_values.strip().lower() == "hex"
+    ):
         return "hexadecimal"
     normalized = [_normalize_value(value) for value in allowed_values]
     if len(normalized) == 2 and set(normalized) == {"0", "1"}:
@@ -1120,7 +1131,9 @@ def _submission_render_params(
             key = cell["key"]
             score = partial_scores.get(key, {}).get("score") if graded else None
             submitted_raw = data["submitted_answers"].get(key, None)
-            submitted = _answer_value(submitted_raw) if submitted_raw is not None else ""
+            submitted = (
+                _answer_value(submitted_raw) if submitted_raw is not None else ""
+            )
             format_error = data.get("format_errors", {}).get(key)
             is_unanswered = submitted_raw is None
             row_cells.append(
@@ -1135,9 +1148,7 @@ def _submission_render_params(
                     "correct": score is not None and score >= 1,
                     "incorrect": not is_unanswered and score is not None and score < 1,
                     "invalid": format_error is not None
-                    or _is_invalid_submission(
-                        submitted_raw, allowed_values, bus_width
-                    ),
+                    or _is_invalid_submission(submitted_raw, allowed_values, bus_width),
                     "invalid_message": format_error
                     or _invalid_value_message(
                         allowed_values, bus_width, allowed_values_label
@@ -1289,7 +1300,9 @@ def parse(element_html, data):
                 )
             else:
                 canonical = _canonical_signal_value(val, allowed_values, bus_width)
-                if canonical is None and (input_mode == "text" or bus_width is not None):
+                if canonical is None and (
+                    input_mode == "text" or bus_width is not None
+                ):
                     format_errors[cell["key"]] = _invalid_value_message(
                         allowed_values, bus_width, allowed_values_label
                     )

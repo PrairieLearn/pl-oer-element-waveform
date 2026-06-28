@@ -12,9 +12,8 @@ import pytest
 ELEMENT_DIR = Path(__file__).resolve().parent
 COURSE_DIR = ELEMENT_DIR.parent.parent
 
-sys.modules.setdefault(
-    "chevron",
-    types.SimpleNamespace(render=lambda _template, params: json.dumps(params)),
+sys.modules["chevron"] = types.SimpleNamespace(
+    render=lambda _template, params: json.dumps(params)
 )
 
 lxml_module = types.ModuleType("lxml")
@@ -261,7 +260,9 @@ def test_bus_values_force_digital_segments_to_render_as_buses() -> None:
     assert signals[1]["correct_data"] == ["0", "1", "0"]
 
 
-def test_submission_renders_digital_answers_as_bus_when_allowed_values_are_bus() -> None:
+def test_submission_renders_digital_answers_as_bus_when_allowed_values_are_bus() -> (
+    None
+):
     element_html = '<pl-waveform answers-name="bus"></pl-waveform>'
     data = _base_data(
         [
@@ -772,9 +773,7 @@ def test_bus_width_uses_allowed_values_as_a_character_alphabet() -> None:
         ("", "Expected 2 hexadecimal characters"),
     ],
 )
-def test_bus_width_invalid_text_values_report_format_errors(
-    submitted, message
-) -> None:
+def test_bus_width_invalid_text_values_report_format_errors(submitted, message) -> None:
     element_html = '<pl-waveform answers-name="wide" input-mode="text"></pl-waveform>'
     data = _base_data(
         [
