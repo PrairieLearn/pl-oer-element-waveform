@@ -286,6 +286,34 @@ def test_submission_renders_digital_answers_as_bus_when_allowed_values_are_bus()
     assert waveform["signal"][0]["data"] == ["0", "1", "0"]
 
 
+def test_question_text_mode_preserves_fixed_bus_start_labels() -> None:
+    element_html = '<pl-waveform answers-name="accum" input-mode="text"></pl-waveform>'
+    data = _base_data(
+        [
+            {"name": "clk", "editable": False, "wave": "P..."},
+            {
+                "name": "A",
+                "editable": True,
+                "start_values": ["00"],
+                "values": ["09", "03", "06"],
+                "allowed_values": "hex",
+                "bus_width": 2,
+            },
+        ],
+        raw_submitted_answers={
+            "accum_A_1": "09",
+            "accum_A_2": "03",
+            "accum_A_3": "06",
+        },
+    )
+
+    rendered = _render(element_html, data)
+    waveform = json.loads(rendered["wavedrom_json"])
+
+    assert waveform["signal"][1]["wave"] == "=xxx"
+    assert waveform["signal"][1]["data"] == ["00"]
+
+
 def test_editable_z_is_inferred_as_a_digital_allowed_value() -> None:
     element_html = '<pl-waveform answers-name="tri"></pl-waveform>'
     data = _base_data(
@@ -914,6 +942,29 @@ def test_unknown_feedback_mode_is_rejected() -> None:
     data = _base_data([{"name": "D", "editable": False, "values": [0]}])
 
     with pytest.raises(Exception, match="invalid feedback"):
+        pl_waveform.prepare(element_html, data)
+
+
+@pytest.mark.parametrize(
+    ("element_html", "params", "message"),
+    [
+        (
+            '<pl-waveform answers-name="part1"></pl-waveform>',
+            {"wave": [{"name": "D", "editable": False, "values": [0]}]},
+            "signals-param='signals'.*available keys: wave",
+        ),
+        (
+            '<pl-waveform answers-name="part1" signals-param="expected"></pl-waveform>',
+            {"signals": [{"name": "D", "editable": False, "values": [0]}]},
+            "signals-param='expected'.*available keys: signals",
+        ),
+    ],
+)
+def test_missing_signals_param_is_rejected(element_html, params, message) -> None:
+    data = _base_data([])
+    data["params"] = params
+
+    with pytest.raises(Exception, match=message):
         pl_waveform.prepare(element_html, data)
 
 

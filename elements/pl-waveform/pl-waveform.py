@@ -51,7 +51,14 @@ def _get_signals(element: Any, data: dict[str, Any]) -> list[dict[str, Any]]:
     signals_param = pl.get_string_attrib(
         element, "signals-param", SIGNALS_PARAM_DEFAULT
     )
-    return _normalize_signals(data["params"].get(signals_param, []))
+    params = data["params"]
+    if signals_param not in params:
+        available = ", ".join(sorted(params)) or "none"
+        raise Exception(
+            f"pl-waveform: signals-param='{signals_param}' was not found in data['params']; "
+            f"available keys: {available}"
+        )
+    return _normalize_signals(params[signals_param])
 
 
 def _normalize_value(val: Any) -> str | None:
@@ -668,6 +675,7 @@ def _build_value_rendered_signal(
     answers_name: str,
     answer_values: dict[str, Any],
     from_json: bool = True,
+    show_editable_bus_values: bool = True,
 ) -> dict[str, Any]:
     """Render an editable signal using the submitted values."""
     s = dict(sig)
@@ -681,11 +689,15 @@ def _build_value_rendered_signal(
     if sig.get("is_bus"):
         value_by_key = {}
         for cell in cells_by_abs_index.values():
-            value_by_key[cell["key"]] = _canonical_answer_value(
-                answer_values.get(cell["key"], None),
-                allowed_values,
-                bus_width,
-                from_json=from_json,
+            value_by_key[cell["key"]] = (
+                _canonical_answer_value(
+                    answer_values.get(cell["key"], None),
+                    allowed_values,
+                    bus_width,
+                    from_json=from_json,
+                )
+                if show_editable_bus_values
+                else None
             )
 
         wave, data_values = _build_editable_bus_wave_and_data(
@@ -1051,15 +1063,15 @@ def _question_render_params(
     for sig in signals:
         rendered = (
             _build_value_rendered_signal(
-                sig, answers_name, data["raw_submitted_answers"], from_json=False
+                sig,
+                answers_name,
+                data["raw_submitted_answers"],
+                from_json=False,
+                show_editable_bus_values=input_mode != "text",
             )
             if sig.get("editable")
             else dict(sig)
         )
-        # Text inputs sit over the bus cells, so WaveDrom's own data labels are
-        # hidden in the question panel but kept for submission/answer panels.
-        if input_mode == "text" and sig.get("editable") and sig.get("is_bus"):
-            rendered.pop("data", None)
         question_signals.append(rendered)
     parse_error_cells = _parse_error_cells(signals, answers_name, data)
     parse_errors = {cell["key"]: cell["message"] for cell in parse_error_cells}
