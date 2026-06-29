@@ -605,12 +605,13 @@ def _editable_cells(sig: dict[str, Any], answers_name: str) -> list[dict[str, An
             f"but {len(correct_answers)} entries in 'correct_answers'"
         )
 
-    for editable_index, abs_index in enumerate(editable_abs_indices, start=1):
-        correct_value = _canonical_signal_value(
-            correct_answers[editable_index - 1], allowed_values, bus_width
-        )
+    for editable_index, (abs_index, answer) in enumerate(
+        zip(editable_abs_indices, correct_answers, strict=True),
+        start=1,
+    ):
+        correct_value = _canonical_signal_value(answer, allowed_values, bus_width)
         if correct_value is None:
-            correct_value = _display_value(correct_answers[editable_index - 1])
+            correct_value = _display_value(answer)
         cells.append(
             {
                 "editable_index": editable_index,
@@ -815,12 +816,7 @@ def _validate_signals(signals: Any, answers_name: str) -> None:
         allowed_values = _get_allowed_values(sig)
         bus_width = sig.get("bus_width")
 
-        editable_cells = _editable_cells(sig, answers_name)
-        if len(editable_cells) != len(correct_answers):
-            raise Exception(
-                f"pl-waveform: editable signal '{signal_key}' has {len(editable_cells)} editable cells in 'wave' "
-                f"but {len(correct_answers)} entries in 'correct_answers'"
-            )
+        _editable_cells(sig, answers_name)
 
         for cycle_idx, val in enumerate(correct_answers, start=1):
             canonical = _canonical_signal_value(val, allowed_values, bus_width)
