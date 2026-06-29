@@ -137,17 +137,18 @@ function measureSVGPositions(container, signalNames) {
     var svg = container.querySelector('svg');
     if (!svg) return null;
 
-    var containerRect = container.getBoundingClientRect();
-    var signalSet = new Set(signalNames);
     var tickXMap = {};
     var tickYMap = {};
-    var signalYMap = {};
-    var signalBoundsMap = {};
+    var rows = measureWaveLaneRows(svg, container);
+    var rowMeasurements = mapSignalsToWaveLaneRows(container, signalNames, rows);
+    var signalYMap = rowMeasurements.signalYMap;
+    var signalBoundsMap = rowMeasurements.signalBoundsMap;
 
     Array.from(svg.querySelectorAll('text')).forEach(function (t) {
         var txt = t.textContent.trim();
+        var insideLane = !!(t.closest && t.closest('[id^="wavelane_"]'));
 
-        if (/^\d+$/.test(txt)) {
+        if (/^\d+$/.test(txt) && !insideLane) {
             try {
                 var bbox = t.getBBox();
                 var pt = toContainerPixels(svg, container, t, bbox.x + bbox.width / 2, bbox.y);
@@ -158,37 +159,6 @@ function measureSVGPositions(container, signalNames) {
                 }
             } catch (e) { /* skip */ }
             return;
-        }
-
-        if (signalSet.has(txt)) {
-            try {
-                var bbox2 = t.getBBox();
-                var pt2 = toContainerPixels(svg, container, t, bbox2.x, bbox2.y + bbox2.height / 2);
-                if (pt2) signalYMap[txt] = pt2.y;
-
-                var labelRect = t.getBoundingClientRect();
-                var labelBounds = {
-                    top: labelRect.top - containerRect.top,
-                    bottom: labelRect.bottom - containerRect.top
-                };
-                var lane = t.closest('[id^="wavelane_"]');
-                if (lane && !signalBoundsMap[txt]) {
-                    var laneBox = lane.getBBox();
-                    var top = toContainerPixels(svg, container, lane, laneBox.x, laneBox.y);
-                    var bottom = toContainerPixels(svg, container, lane, laneBox.x, laneBox.y + laneBox.height);
-                    if (top && bottom) {
-                        labelBounds.top = Math.min(labelBounds.top, top.y, bottom.y);
-                        labelBounds.bottom = Math.max(labelBounds.bottom, top.y, bottom.y);
-                    }
-                }
-                if (!signalBoundsMap[txt]) {
-                    signalBoundsMap[txt] = {
-                        top: labelBounds.top,
-                        bottom: labelBounds.bottom,
-                        height: labelBounds.bottom - labelBounds.top
-                    };
-                }
-            } catch (e) { /* skip */ }
         }
     });
 
@@ -207,6 +177,88 @@ function measureSVGPositions(container, signalNames) {
         signalBoundsMap: signalBoundsMap,
         sortedTicks: sortedTicks,
         unitWidth: unitWidth
+    };
+}
+
+/** Return whether an SVG node is one full WaveDrom row group. */
+function isWaveLaneRow(node) {
+    return !!(node && node.id && /^wavelane_\d+_\d+$/.test(node.id));
+}
+
+/** Measure full WaveDrom row groups, excluding nested draw groups and data labels. */
+function measureWaveLaneRows(svg, container) {
+    return Array.from(svg.querySelectorAll('[id^="wavelane_"]'))
+        .filter(isWaveLaneRow)
+        .map(function (lane) {
+            try {
+                var match = lane.id.match(/^wavelane_(\d+)_(\d+)$/);
+                var laneBox = lane.getBBox();
+                var top = toContainerPixels(svg, container, lane, laneBox.x, laneBox.y);
+                var bottom = toContainerPixels(svg, container, lane, laneBox.x, laneBox.y + laneBox.height);
+                if (!match || !top || !bottom || laneBox.height <= 0) return null;
+                return {
+                    node: lane,
+                    rowIndex: parseInt(match[1], 10),
+                    diagramIndex: parseInt(match[2], 10),
+                    top: Math.min(top.y, bottom.y),
+                    bottom: Math.max(top.y, bottom.y)
+                };
+            } catch (e) {
+                return null;
+            }
+        })
+        .filter(function (row) { return row !== null; })
+        .sort(function (a, b) {
+            return a.diagramIndex - b.diagramIndex || a.rowIndex - b.rowIndex;
+        });
+}
+
+/** Map editable signal names to measured rows using the WaveDrom model order. */
+function mapSignalsToWaveLaneRows(container, signalNames, rows) {
+    var signalSet = new Set(signalNames);
+    var signalYMap = {};
+    var signalBoundsMap = {};
+    var model = getBaseWaveDromModel(container);
+
+    if (model && Array.isArray(model.signal)) {
+        model.signal.forEach(function (signal, idx) {
+            var row = rows[idx];
+            var label = signal ? nameText(signal.name) : '';
+            if (!row || !signalSet.has(label) || signalBoundsMap[label]) return;
+            setSignalRowMeasurement(signalYMap, signalBoundsMap, label, row);
+        });
+    }
+
+    rows.forEach(function (row) {
+        var label = directWaveLaneLabel(row.node);
+        if (!signalSet.has(label) || signalBoundsMap[label]) return;
+        setSignalRowMeasurement(signalYMap, signalBoundsMap, label, row);
+    });
+
+    return { signalYMap: signalYMap, signalBoundsMap: signalBoundsMap };
+}
+
+/** Return the direct signal-label text for a WaveDrom row, preserving spaces. */
+function directWaveLaneLabel(lane) {
+    if (!lane) return '';
+    for (var idx = 0; idx < lane.children.length; idx += 1) {
+        var child = lane.children[idx];
+        if (child && child.tagName && child.tagName.toLowerCase() === 'text') {
+            return child.textContent;
+        }
+    }
+    return '';
+}
+
+/** Store a measured row under one signal label. */
+function setSignalRowMeasurement(signalYMap, signalBoundsMap, label, row) {
+    var top = row.top;
+    var bottom = row.bottom;
+    signalYMap[label] = (top + bottom) / 2;
+    signalBoundsMap[label] = {
+        top: top,
+        bottom: bottom,
+        height: bottom - top
     };
 }
 
@@ -583,10 +635,15 @@ function applyEditableRowToSignal(container, signalModel, rowModel) {
         var prevBusValue = null;
         var fixedData = Array.isArray(rowModel.data) ? rowModel.data.slice() : [];
         var fixedDataIdx = 0;
+        var showEditableBusValues = getInputMode(container) !== 'text';
 
         waveChars = waveChars.map(function (ch, absIndex) {
             var cell = cellsByAbsIndex[absIndex];
             if (cell) {
+                if (!showEditableBusValues) {
+                    prevBusValue = null;
+                    return 'x';
+                }
                 var busValue = getControlValue(container, cell, allowedValues, busWidth);
                 if (busValue === '') {
                     prevBusValue = null;
@@ -620,8 +677,7 @@ function applyEditableRowToSignal(container, signalModel, rowModel) {
         });
 
         signalModel.wave = waveChars.join('');
-        if (getInputMode(container) === 'text') delete signalModel.data;
-        else if (dataValues.length > 0) signalModel.data = dataValues;
+        if (dataValues.length > 0) signalModel.data = dataValues;
         else delete signalModel.data;
         return;
     }
