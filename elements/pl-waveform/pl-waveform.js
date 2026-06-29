@@ -635,19 +635,19 @@ function applyEditableRowToSignal(container, signalModel, rowModel) {
         var prevBusValue = null;
         var fixedData = Array.isArray(rowModel.data) ? rowModel.data.slice() : [];
         var fixedDataIdx = 0;
-        var showEditableBusValues = getInputMode(container) !== 'text';
+        var showEditableBusLabels = getInputMode(container) !== 'text';
 
         waveChars = waveChars.map(function (ch, absIndex) {
             var cell = cellsByAbsIndex[absIndex];
             if (cell) {
-                if (!showEditableBusValues) {
-                    prevBusValue = null;
-                    return 'x';
-                }
                 var busValue = getControlValue(container, cell, allowedValues, busWidth);
                 if (busValue === '') {
                     prevBusValue = null;
                     return 'x';
+                }
+                if (!showEditableBusLabels) {
+                    prevBusValue = null;
+                    return '=';
                 }
                 if (prevBusValue !== null && busValue === prevBusValue) {
                     return '.';

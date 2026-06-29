@@ -630,6 +630,7 @@ def _build_editable_bus_wave_and_data(
     fixed_data: list[str],
     cells_by_abs_index: dict[int, dict[str, Any]],
     value_by_key: dict[str, str | None],
+    show_editable_labels: bool = True,
 ) -> tuple[str, list[str]]:
     """Build a bus-rendered wave from editable cell values."""
     new_chars = []
@@ -644,14 +645,20 @@ def _build_editable_bus_wave_and_data(
             if value is None:
                 new_chars.append("x")
                 previous_state = _wave_state("x")
+                continue
+
+            if not show_editable_labels:
+                new_chars.append("=")
+                previous_state = None
+                continue
+
+            state = ("bus", value)
+            if state == previous_state:
+                new_chars.append(".")
             else:
-                state = ("bus", value)
-                if state == previous_state:
-                    new_chars.append(".")
-                else:
-                    new_chars.append("=")
-                    data_values.append(value)
-                previous_state = state
+                new_chars.append("=")
+                data_values.append(value)
+            previous_state = state
             continue
 
         if ch in BUS_WAVE_CHARS:
@@ -700,15 +707,11 @@ def _build_value_rendered_signal(
     if sig.get("is_bus"):
         value_by_key = {}
         for cell in cells_by_abs_index.values():
-            value_by_key[cell["key"]] = (
-                _canonical_answer_value(
-                    answer_values.get(cell["key"], None),
-                    allowed_values,
-                    bus_width,
-                    from_json=from_json,
-                )
-                if show_editable_bus_values
-                else None
+            value_by_key[cell["key"]] = _canonical_answer_value(
+                answer_values.get(cell["key"], None),
+                allowed_values,
+                bus_width,
+                from_json=from_json,
             )
 
         wave, data_values = _build_editable_bus_wave_and_data(
@@ -716,6 +719,7 @@ def _build_value_rendered_signal(
             sig.get("data", []),
             cells_by_abs_index,
             value_by_key,
+            show_editable_labels=show_editable_bus_values,
         )
         s["wave"] = wave
         if data_values:
