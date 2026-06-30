@@ -1,0 +1,71 @@
+<pl-question-panel>
+    <p>
+        This question contains a bunch of more complex test cases that can 
+        be used as a form of regression test suite.
+    </p>
+</pl-question-panel>
+
+<pl-question-panel>
+    <hr>
+    <h4>Part 1</h4>
+    <p>
+        Formatted signal labels, fixed start values, and editable half-cycle rows.
+    </p>
+</pl-question-panel>
+
+<pl-waveform
+    answers-name="dff"
+    hscale="4"
+    feedback="row"
+    input-mode="toggle"
+    signals-param="dff_signals">
+</pl-waveform>
+
+<pl-question-panel>
+    <hr>
+    <h4>Part 2</h4>
+    <p>
+        Bus text inputs with fixed start values.
+    </p>
+</pl-question-panel>
+
+<pl-waveform
+    answers-name="regfile"
+    hscale="2.5"
+    feedback="cell"
+    input-mode="text"
+    signals-param="regfile_signals">
+</pl-waveform>
+
+<pl-question-panel>
+    <hr>
+    <h4>Part 3</h4>
+    <p>
+        State bus whose allowed values overlap signal names.
+    </p>
+</pl-question-panel>
+
+<pl-waveform
+    answers-name="overlap"
+    hscale="2"
+    feedback="cell"
+    input-mode="text"
+    signals-param="overlap_signals">
+</pl-waveform>
+
+<pl-question-panel>
+    <hr>
+    <h4>Part 4</h4>
+    <p>
+        Alternating processor/bus reference rows with sparse bus data
+        labels and toggle-mode answer rows.
+    </p>
+</pl-question-panel>
+
+<pl-waveform
+    answers-name="msi"
+    hscale="2"
+    feedback="cell"
+    input-mode="toggle"
+    signals-param="msi_signals">
+</pl-waveform>
