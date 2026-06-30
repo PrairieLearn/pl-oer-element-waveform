@@ -175,6 +175,7 @@ function measureSVGPositions(container, signalNames) {
         tickXMap: tickXMap,
         signalYMap: signalYMap,
         signalBoundsMap: signalBoundsMap,
+        waveLaneRows: rows,
         sortedTicks: sortedTicks,
         unitWidth: unitWidth
     };
@@ -260,6 +261,106 @@ function setSignalRowMeasurement(signalYMap, signalBoundsMap, label, row) {
         bottom: bottom,
         height: bottom - top
     };
+}
+
+/** Return authored fixed bus labels that should stay anchored to fixed slots. */
+function fixedBusSlots(rowModel) {
+    var editableSlots = new Set();
+    var dataValues = Array.isArray(rowModel.data) ? rowModel.data : [];
+    var dataIndex = 0;
+    var slots = [];
+
+    (rowModel.cells || []).forEach(function (cell) {
+        editableSlots.add(cell.abs_index);
+    });
+
+    String(rowModel.wave || '').split('').forEach(function (ch, absIndex) {
+        if (editableSlots.has(absIndex) || ch !== '=' || dataIndex >= dataValues.length) return;
+        slots.push({ absIndex: absIndex, value: String(dataValues[dataIndex]) });
+        dataIndex += 1;
+    });
+
+    return slots;
+}
+
+/** Return bus data-label nodes for a WaveDrom row, excluding the signal name. */
+function busDataLabels(rowNode) {
+    if (!rowNode) return [];
+    return Array.from(rowNode.querySelectorAll('text')).filter(function (textNode) {
+        return textNode.parentNode !== rowNode;
+    });
+}
+
+/** Return the first unused text node with matching trimmed text. */
+function takeMatchingLabel(labels, usedLabels, value) {
+    var targetText = String(value).trim();
+    for (var idx = 0; idx < labels.length; idx += 1) {
+        if (usedLabels.has(idx)) continue;
+        if (labels[idx].textContent.trim() !== targetText) continue;
+        usedLabels.add(idx);
+        return labels[idx];
+    }
+    return null;
+}
+
+/** Move an SVG text element horizontally to a container-local x-coordinate. */
+function moveTextCenterToContainerX(svg, container, textNode, targetX) {
+    try {
+        var originalTransformAttr = 'data-pl-waveform-original-transform';
+        if (!textNode.hasAttribute(originalTransformAttr)) {
+            textNode.setAttribute(originalTransformAttr, textNode.getAttribute('transform') || '');
+        } else {
+            textNode.setAttribute('transform', textNode.getAttribute(originalTransformAttr));
+        }
+
+        var bbox = textNode.getBBox();
+        var current = toContainerPixels(svg, container, textNode, bbox.x + bbox.width / 2, bbox.y + bbox.height / 2);
+        if (!current) return;
+
+        var ctm = textNode.getCTM();
+        var scale = ctm && Number.isFinite(ctm.a) && ctm.a !== 0 ? Math.abs(ctm.a) : 1;
+        var originalTransform = textNode.getAttribute(originalTransformAttr);
+        var translate = 'translate(' + ((targetX - current.x) / scale) + ' 0)';
+        textNode.setAttribute('transform', originalTransform ? originalTransform + ' ' + translate : translate);
+    } catch (e) { /* skip labels that cannot be measured */ }
+}
+
+/** Anchor fixed bus labels to their fixed slots within one WaveDrom row. */
+function anchorFixedBusLabels(container, svg, measurements, rowModel, rowNode) {
+    var slots = fixedBusSlots(rowModel);
+    if (slots.length === 0) return;
+
+    var labels = busDataLabels(rowNode);
+    var usedLabels = new Set();
+    slots.forEach(function (slot) {
+        var textNode = takeMatchingLabel(labels, usedLabels, slot.value);
+        var targetX = getSlotCenterX(measurements, slot.absIndex, rowModel.period, null);
+        if (textNode && targetX !== null) {
+            moveTextCenterToContainerX(svg, container, textNode, targetX);
+        }
+    });
+}
+
+/** Keep fixed bus labels from drifting into editable text-input cells. */
+function repositionFixedBusLabels(container) {
+    if (getInputMode(container) !== 'text') return;
+
+    var svg = container.querySelector('svg');
+    var model = getBaseWaveDromModel(container);
+    var rowModels = getEditableRowModels(container);
+    if (!svg || !model || !Array.isArray(model.signal) || rowModels.length === 0) return;
+
+    var measurements = measureSVGPositions(container, getEditableSignals(container));
+    if (!measurements) return;
+
+    rowModels.forEach(function (rowModel) {
+        if (!rowModel.is_bus) return;
+        var signalIndex = findWaveDromSignalIndex(model, rowModel.display_name || rowModel.signal_name);
+        var row = measurements.waveLaneRows[signalIndex];
+        if (!row || !row.node) return;
+
+        anchorFixedBusLabels(container, svg, measurements, rowModel, row.node);
+    });
 }
 
 /** Remove all overlay elements matching a selector from a container. */
@@ -592,13 +693,19 @@ function rerenderWaveDrom(container, model) {
 
 /** Find a signal entry by display name within a WaveDrom model. */
 function findWaveDromSignal(model, signalName) {
-    if (!model || !Array.isArray(model.signal)) return null;
+    var signalIndex = findWaveDromSignalIndex(model, signalName);
+    return signalIndex >= 0 ? model.signal[signalIndex] : null;
+}
+
+/** Find the index of a signal entry by display name within a WaveDrom model. */
+function findWaveDromSignalIndex(model, signalName) {
+    if (!model || !Array.isArray(model.signal)) return -1;
     for (var idx = 0; idx < model.signal.length; idx += 1) {
         if (model.signal[idx] && JSON.stringify(model.signal[idx].name) === JSON.stringify(signalName)) {
-            return model.signal[idx];
+            return idx;
         }
     }
-    return null;
+    return -1;
 }
 
 /** Resolve the current value for a rendered cell or hidden input. */
@@ -713,6 +820,7 @@ function updateQuestionWaveDrom(container) {
     });
 
     rerenderWaveDrom(container, model);
+    repositionFixedBusLabels(container);
 }
 
 
@@ -1245,6 +1353,7 @@ function initContainer(container) {
         } else {
             positionTextInputs(container);
             buildTextEditorRowBands(container);
+            repositionFixedBusLabels(container);
         }
     }
 
