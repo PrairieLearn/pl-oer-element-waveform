@@ -38,7 +38,7 @@ var DEFAULT_ALLOWED_VALUES = ['0', '1', 'x'];
 var DEFAULT_SIGNAL_LABEL_HEIGHT = 22;
 var SIGNAL_ROW_VERTICAL_PADDING = 16;
 var FEEDBACK_STATE_CLASSES = 'pl-waveform-correct pl-waveform-incorrect pl-waveform-unanswered pl-waveform-control-error pl-waveform-invalid'.split(' ');
-var GENERATED_OVERLAY_SELECTOR = '.pl-waveform-feedback-overlay, .pl-waveform-diff-marker, .pl-waveform-row-score-badge, .pl-waveform-element-score-badge, .pl-waveform-parse-error, .pl-waveform-parse-error-summary, .pl-waveform-cell-score-badge, .pl-waveform-input-hint, .pl-waveform-submitted-bus-label';
+var GENERATED_OVERLAY_SELECTOR = '.pl-waveform-feedback-overlay, .pl-waveform-diff-marker, .pl-waveform-row-score-badge, .pl-waveform-element-score-badge, .pl-waveform-parse-error, .pl-waveform-parse-error-summary, .pl-waveform-cell-score-badge, .pl-waveform-input-hint, .pl-waveform-bus-label-slot';
 
 /** Normalize a raw value for comparison. */
 function normalizeRawValue(value) {
@@ -263,191 +263,26 @@ function setSignalRowMeasurement(signalYMap, signalBoundsMap, label, row) {
     };
 }
 
-/** Return authored fixed bus labels that should stay anchored to fixed slots. */
-function fixedBusSlots(rowModel) {
-    var editableSlots = cellsByAbsIndex(rowModel);
-    var dataValues = Array.isArray(rowModel.data) ? rowModel.data : [];
-    var dataIndex = 0;
-    var slots = [];
+/** Draw bus labels that PL owns instead of WaveDrom.
+ *
+ * WaveDrom centers labels over bus transitions. Editable bus rows sometimes
+ * need labels centered on individual cells while the bus itself stays held.
+ * Python omits those labels from WaveDrom data and sends explicit slots here.
+ */
+function renderBusLabelSlots(container, measurements, slots) {
+    if (!measurements || !Array.isArray(slots)) return;
 
-    String(rowModel.wave || '').split('').forEach(function (ch, absIndex) {
-        if (editableSlots[absIndex] || ch !== '=' || dataIndex >= dataValues.length) return;
-        slots.push({ absIndex: absIndex, value: String(dataValues[dataIndex]) });
-        dataIndex += 1;
-    });
-
-    return slots;
-}
-
-/** Return bus data-label nodes for a WaveDrom row, excluding the signal name. */
-function busDataLabels(rowNode) {
-    if (!rowNode) return [];
-    return Array.from(rowNode.querySelectorAll('text')).filter(function (textNode) {
-        return textNode.parentNode !== rowNode;
-    });
-}
-
-/** Return the first unused text node with matching trimmed text. */
-function takeMatchingLabel(labels, usedLabels, value) {
-    var targetText = String(value).trim();
-    for (var idx = 0; idx < labels.length; idx += 1) {
-        if (usedLabels.has(idx)) continue;
-        if (labels[idx].textContent.trim() !== targetText) continue;
-        usedLabels.add(idx);
-        return labels[idx];
-    }
-    return null;
-}
-
-/** Restore WaveDrom bus labels hidden while drawing per-cell submitted labels. */
-function restoreHiddenBusLabels(container) {
-    Array.from(container.querySelectorAll('[data-pl-waveform-hidden-bus-label="true"]')).forEach(function (label) {
-        var originalVisibility = label.getAttribute('data-pl-waveform-original-visibility');
-        label.style.visibility = originalVisibility || '';
-        label.removeAttribute('data-pl-waveform-hidden-bus-label');
-        label.removeAttribute('data-pl-waveform-original-visibility');
-    });
-}
-
-/** Hide one WaveDrom bus label without losing its original inline visibility. */
-function hideWaveDromBusLabel(label) {
-    if (!label.hasAttribute('data-pl-waveform-hidden-bus-label')) {
-        label.setAttribute('data-pl-waveform-original-visibility', label.style.visibility || '');
-    }
-    label.style.visibility = 'hidden';
-    label.setAttribute('data-pl-waveform-hidden-bus-label', 'true');
-}
-
-/** Return a rendered SVG text label's horizontal center in container pixels. */
-function labelCenterX(svg, container, label) {
-    try {
-        var bbox = label.getBBox();
-        var center = toContainerPixels(svg, container, label, bbox.x + bbox.width / 2, bbox.y + bbox.height / 2);
-        return center ? center.x : null;
-    } catch (e) {
-        return null;
-    }
-}
-
-/** Return whether a horizontal position lies inside one submitted cell. */
-function xInSubmittedCell(measurements, cell, x) {
-    var center = getSlotCenterX(measurements, cell.abs_index, cell.period, cell.cycle_num);
-    if (center === null) return false;
-
-    var width = measurements.unitWidth * getSlotPeriod(cell.period, 1);
-    return x >= center - width / 2 && x <= center + width / 2;
-}
-
-/** Move an SVG text node horizontally to a container-local x-coordinate. */
-function moveTextCenterToContainerX(svg, container, textNode, targetX) {
-    try {
-        var originalTransformAttr = 'data-pl-waveform-original-transform';
-        if (!textNode.hasAttribute(originalTransformAttr)) {
-            textNode.setAttribute(originalTransformAttr, textNode.getAttribute('transform') || '');
-        } else {
-            textNode.setAttribute('transform', textNode.getAttribute(originalTransformAttr));
-        }
-
-        var bbox = textNode.getBBox();
-        var current = toContainerPixels(svg, container, textNode, bbox.x + bbox.width / 2, bbox.y + bbox.height / 2);
-        if (!current) return;
-
-        var ctm = textNode.getCTM();
-        var scale = ctm && Number.isFinite(ctm.a) && ctm.a !== 0 ? Math.abs(ctm.a) : 1;
-        var originalTransform = textNode.getAttribute(originalTransformAttr);
-        var translate = 'translate(' + ((targetX - current.x) / scale) + ' 0)';
-        textNode.setAttribute('transform', originalTransform ? originalTransform + ' ' + translate : translate);
-    } catch (e) { /* skip labels that cannot be measured */ }
-}
-
-/** Draw one submitted bus label per filled bus cell while leaving the bus wave merged. */
-function renderSubmittedBusLabels(container, measurements, labelCells) {
-    if (container.getAttribute('data-panel') !== 'submission') return;
-
-    var svg = container.querySelector('svg');
-    if (!svg || !measurements) return;
-
-    var cellsBySignal = {};
-    (labelCells || []).forEach(function (cell) {
-        if (!cell.submitted_value) return;
-        if (!cellsBySignal[cell.signal_name]) cellsBySignal[cell.signal_name] = [];
-        cellsBySignal[cell.signal_name].push(cell);
-    });
-
-    Object.keys(cellsBySignal).forEach(function (signalName) {
-        var row = measurements.waveLaneRows.find(function (candidate) {
-            return directWaveLaneLabel(candidate.node) === signalName;
-        });
-        var labels = busDataLabels(row && row.node);
-        if (!row || labels.length === 0) return;
-
-        var parent = labels[0].parentNode;
-        if (!parent) return;
-
-        cellsBySignal[signalName].forEach(function (cell) {
-            var targetX = getSlotCenterX(measurements, cell.abs_index, cell.period, cell.cycle_num);
-            if (targetX === null) return;
-
-            var template = labels.find(function (label) {
-                return label.textContent.trim() === String(cell.submitted_value).trim();
-            }) || labels[0];
-            var clone = template.cloneNode(true);
-            clone.textContent = cell.submitted_value;
-            clone.classList.add('pl-waveform-submitted-bus-label');
-            clone.style.visibility = 'visible';
-            clone.removeAttribute('data-pl-waveform-hidden-bus-label');
-            clone.removeAttribute('data-pl-waveform-original-visibility');
-            clone.removeAttribute('data-pl-waveform-original-transform');
-            parent.appendChild(clone);
-            moveTextCenterToContainerX(svg, container, clone, targetX);
-        });
-
-        labels.forEach(function (label) {
-            var x = labelCenterX(svg, container, label);
-            if (x !== null && cellsBySignal[signalName].some(function (cell) {
-                return xInSubmittedCell(measurements, cell, x);
-            })) {
-                hideWaveDromBusLabel(label);
-            }
-        });
-    });
-}
-
-/** Anchor fixed bus labels to their fixed slots within one WaveDrom row. */
-function anchorFixedBusLabels(container, svg, measurements, rowModel, rowNode) {
-    var slots = fixedBusSlots(rowModel);
-    if (slots.length === 0) return;
-
-    var labels = busDataLabels(rowNode);
-    var usedLabels = new Set();
     slots.forEach(function (slot) {
-        var textNode = takeMatchingLabel(labels, usedLabels, slot.value);
-        var targetX = getSlotCenterX(measurements, slot.absIndex, rowModel.period, null);
-        if (textNode && targetX !== null) {
-            moveTextCenterToContainerX(svg, container, textNode, targetX);
-        }
-    });
-}
+        var sigY = measurements.signalYMap[slot.signal_name];
+        var centerX = getSlotCenterX(measurements, slot.abs_index, slot.period, slot.cycle_num);
+        if (sigY === undefined || centerX === null || slot.value === undefined || slot.value === null) return;
 
-/** Keep fixed bus labels from drifting into editable text-input cells. */
-function repositionFixedBusLabels(container, measurements) {
-    if (getInputMode(container) !== 'text') return;
-
-    var svg = container.querySelector('svg');
-    var model = getBaseWaveDromModel(container);
-    var rowModels = getEditableRowModels(container);
-    if (!svg || !model || !Array.isArray(model.signal) || rowModels.length === 0) return;
-
-    measurements = measurements || measureSVGPositions(container, getEditableSignals(container));
-    if (!measurements) return;
-
-    rowModels.forEach(function (rowModel) {
-        if (!rowModel.is_bus) return;
-        var signalIndex = findWaveDromSignalIndex(model, rowModel.display_name || rowModel.signal_name);
-        var row = measurements.waveLaneRows[signalIndex];
-        if (!row || !row.node) return;
-
-        anchorFixedBusLabels(container, svg, measurements, rowModel, row.node);
+        var label = document.createElement('div');
+        label.className = 'pl-waveform-bus-label-slot';
+        label.textContent = String(slot.value);
+        label.style.left = Math.round(centerX) + 'px';
+        label.style.top = Math.round(sigY) + 'px';
+        container.appendChild(label);
     });
 }
 
@@ -461,7 +296,6 @@ function removeOverlays(container, selector) {
 /** Remove all generated overlays from a waveform container. */
 function clearGeneratedOverlays(container) {
     removeOverlays(container, GENERATED_OVERLAY_SELECTOR);
-    restoreHiddenBusLabels(container);
 }
 
 /** Clear feedback state classes from a question control. */
@@ -619,8 +453,6 @@ function computeRowBoundsFromCells(cells, firstTickX, unitWidth, fallbackPeriod)
 /** Clear transient feedback styling from a waveform container. */
 function clearScoreFeedbackState(container) {
     removeOverlays(container, '.pl-waveform-cell-score-badge');
-    removeOverlays(container, '.pl-waveform-submitted-bus-label');
-    restoreHiddenBusLabels(container);
 
     getQuestionControls(container).forEach(function (control) {
         clearFeedbackClasses(control);
@@ -884,7 +716,7 @@ function buildEditableBusWave(container, rowModel, waveChars, cellMap, allowedVa
                     prevBusValue = fixedVal;
                     return '.';
                 }
-                dataValues.push(fixedVal);
+                if (showEditableBusLabels) dataValues.push(fixedVal);
                 prevBusValue = fixedVal;
             } else {
                 prevBusValue = null;
@@ -956,7 +788,6 @@ function updateQuestionWaveDrom(container) {
     });
 
     rerenderWaveDrom(container, model);
-    repositionFixedBusLabels(container);
 }
 
 
@@ -1482,16 +1313,15 @@ function initContainer(container) {
             var measurements = measureSVGPositions(container, getEditableSignals(container));
             positionTextInputs(container, measurements);
             buildTextEditorRowBands(container, measurements);
-            repositionFixedBusLabels(container, measurements);
         }
     }
 
-    if (panel === 'submission' && container.hasAttribute('data-submitted-bus-labels')) {
+    if (container.hasAttribute('data-bus-label-slots')) {
         var labelMeasurements = measureSVGPositions(container, getEditableSignals(container));
-        renderSubmittedBusLabels(
+        renderBusLabelSlots(
             container,
             labelMeasurements,
-            parseJsonAttribute(container, 'data-submitted-bus-labels', [])
+            parseJsonAttribute(container, 'data-bus-label-slots', [])
         );
     }
 

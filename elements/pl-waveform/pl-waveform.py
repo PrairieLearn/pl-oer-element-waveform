@@ -631,12 +631,34 @@ def _build_editable_bus_wave_and_data(
     cells_by_abs_index: dict[int, dict[str, Any]],
     value_by_key: dict[str, str | None],
     show_editable_labels: bool = True,
-) -> tuple[str, list[str]]:
-    """Build a bus-rendered wave from editable cell values."""
+    overlay_labels: bool = False,
+    signal_name: str | None = None,
+) -> tuple[str, list[str], list[dict[str, Any]]]:
+    """Build a bus-rendered wave and any labels PL should place itself.
+
+    WaveDrom ties bus labels to transitions. Editable rows sometimes need the
+    opposite: a continuous bus with labels centered on individual cells. When
+    overlay_labels is true, keep those labels out of WaveDrom data and return
+    explicit slot metadata for the browser to draw over the rendered bus.
+    """
     new_chars = []
     data_values = []
+    label_slots = []
     previous_state = None
     fixed_data_index = 0
+
+    def add_label_slot(abs_index: int, cell: dict[str, Any] | None, value: str) -> None:
+        if signal_name is None:
+            return
+        label_slots.append(
+            {
+                "signal_name": signal_name,
+                "cycle_num": cell["editable_index"] if cell else None,
+                "abs_index": abs_index,
+                "period": cell["period"] if cell else 1,
+                "value": value,
+            }
+        )
 
     for abs_index, ch in enumerate(wave_chars):
         cell = cells_by_abs_index.get(abs_index)
@@ -657,7 +679,10 @@ def _build_editable_bus_wave_and_data(
                 new_chars.append(".")
             else:
                 new_chars.append("=")
-                data_values.append(value)
+                if not overlay_labels:
+                    data_values.append(value)
+            if overlay_labels:
+                add_label_slot(abs_index, cell, value)
             previous_state = state
             continue
 
@@ -670,7 +695,10 @@ def _build_editable_bus_wave_and_data(
                     new_chars.append(".")
                 else:
                     new_chars.append(ch)
-                    data_values.append(fixed_value)
+                    if overlay_labels:
+                        add_label_slot(abs_index, None, fixed_value)
+                    else:
+                        data_values.append(fixed_value)
                 previous_state = state
             else:
                 new_chars.append(ch)
@@ -685,7 +713,7 @@ def _build_editable_bus_wave_and_data(
         if ch != ".":
             previous_state = state
 
-    return "".join(new_chars), data_values
+    return "".join(new_chars), data_values, label_slots
 
 
 def _build_value_rendered_signal(
@@ -694,9 +722,11 @@ def _build_value_rendered_signal(
     answer_values: dict[str, Any],
     from_json: bool = True,
     show_editable_bus_values: bool = True,
-) -> dict[str, Any]:
+    overlay_bus_labels: bool = False,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Render an editable signal using the submitted values."""
     s = dict(sig)
+    label_slots = []
     allowed_values = _get_allowed_values(sig)
     bus_width = sig.get("bus_width")
     wave_chars = list(sig["wave"])
@@ -714,19 +744,21 @@ def _build_value_rendered_signal(
                 from_json=from_json,
             )
 
-        wave, data_values = _build_editable_bus_wave_and_data(
+        wave, data_values, label_slots = _build_editable_bus_wave_and_data(
             wave_chars,
             sig.get("data", []),
             cells_by_abs_index,
             value_by_key,
             show_editable_labels=show_editable_bus_values,
+            overlay_labels=overlay_bus_labels,
+            signal_name=sig["signal_label"],
         )
         s["wave"] = wave
         if data_values:
             s["data"] = data_values
         else:
             s.pop("data", None)
-        return s
+        return s, label_slots
 
     previous_state = None
     new_chars = []
@@ -756,7 +788,7 @@ def _build_value_rendered_signal(
             if ch != ".":
                 previous_state = state
     s["wave"] = "".join(new_chars)
-    return s
+    return s, label_slots
 
 
 def _validate_signals(signals: Any, answers_name: str) -> None:
@@ -1053,39 +1085,6 @@ def _question_cell_scores(
     return cell_scores
 
 
-def _submitted_bus_label_cells(
-    signals: list[dict[str, Any]], answers_name: str, data: dict[str, Any]
-) -> list[dict[str, Any]]:
-    """Build per-cell label metadata for submitted editable bus values."""
-    label_cells = []
-    submitted_answers = data.get("submitted_answers", {})
-    for sig in signals:
-        if not sig.get("editable", False) or not sig.get("is_bus"):
-            continue
-
-        allowed_values = _get_allowed_values(sig)
-        bus_width = sig.get("bus_width")
-        for cell in _editable_cells(sig, answers_name):
-            submitted_raw = submitted_answers.get(cell["key"])
-            if submitted_raw is None:
-                continue
-
-            canonical = _canonical_answer_value(submitted_raw, allowed_values, bus_width)
-            if canonical is None:
-                continue
-
-            label_cells.append(
-                {
-                    "signal_name": sig["signal_label"],
-                    "cycle_num": cell["editable_index"],
-                    "abs_index": cell["abs_index"],
-                    "period": cell["period"],
-                    "submitted_value": canonical,
-                }
-            )
-    return label_cells
-
-
 def _question_render_params(
     element: Any,
     signals: list[dict[str, Any]],
@@ -1103,18 +1102,20 @@ def _question_render_params(
         input_mode,
     )
     question_signals = []
+    bus_label_slots = []
     for sig in signals:
-        rendered = (
-            _build_value_rendered_signal(
+        if sig.get("editable"):
+            rendered, slots = _build_value_rendered_signal(
                 sig,
                 answers_name,
                 data["raw_submitted_answers"],
                 from_json=False,
                 show_editable_bus_values=input_mode != "text",
+                overlay_bus_labels=input_mode == "text",
             )
-            if sig.get("editable")
-            else dict(sig)
-        )
+            bus_label_slots.extend(slots)
+        else:
+            rendered = dict(sig)
         question_signals.append(rendered)
     parse_error_cells = _parse_error_cells(signals, answers_name, data)
     parse_errors = {cell["key"]: cell["message"] for cell in parse_error_cells}
@@ -1137,6 +1138,8 @@ def _question_render_params(
         "parse_errors_json": json.dumps(parse_errors),
         "parse_error_cells_json": json.dumps(parse_error_cells),
         "has_parse_errors": len(parse_error_cells) > 0,
+        "bus_label_slots_json": json.dumps(bus_label_slots),
+        "has_bus_label_slots": len(bus_label_slots) > 0,
         "cell_scores_json": json.dumps(cell_scores if graded else []),
         "has_cell_scores": feedback != "none"
         and graded
@@ -1172,9 +1175,6 @@ def _submission_render_params(
     total_cells = 0
     correct_count = 0
     max_cycles = 0
-    submitted_bus_label_cells = _submitted_bus_label_cells(
-        signals, answers_name, data
-    )
 
     for sig in signals:
         if not sig.get("editable", False):
@@ -1229,27 +1229,29 @@ def _submission_render_params(
         )
 
     score_pct = round(100 * correct_count / total_cells) if total_cells > 0 else 0
+    submission_signals = []
+    bus_label_slots = []
+    for sig in signals:
+        if sig.get("editable"):
+            rendered, slots = _build_value_rendered_signal(
+                sig,
+                answers_name,
+                data["submitted_answers"],
+                overlay_bus_labels=True,
+            )
+            bus_label_slots.extend(slots)
+        else:
+            rendered = dict(sig)
+        submission_signals.append(rendered)
 
     return {
         "submission": True,
         "feedback": feedback,
         "input_mode": input_mode,
-        "wavedrom_json": _build_wavedrom(
-            [
-                (
-                    _build_value_rendered_signal(
-                        sig, answers_name, data["submitted_answers"]
-                    )
-                    if sig.get("editable")
-                    else dict(sig)
-                )
-                for sig in signals
-            ],
-            hscale,
-        ),
+        "wavedrom_json": _build_wavedrom(submission_signals, hscale),
         "cell_scores_json": json.dumps(feedback_cells if graded else []),
-        "submitted_bus_labels_json": json.dumps(submitted_bus_label_cells),
-        "has_submitted_bus_labels": len(submitted_bus_label_cells) > 0,
+        "bus_label_slots_json": json.dumps(bus_label_slots),
+        "has_bus_label_slots": len(bus_label_slots) > 0,
         "editable_signals_json": json.dumps(
             [sig["signal_label"] for sig in signals if sig.get("editable", False)]
         ),
