@@ -646,8 +646,9 @@ function applyEditableRowToSignal(container, signalModel, rowModel) {
                     return 'x';
                 }
                 if (!showEditableBusLabels) {
-                    prevBusValue = null;
-                    return '=';
+                    var hiddenChar = prevBusValue !== null && busValue === prevBusValue ? '.' : '=';
+                    prevBusValue = busValue;
+                    return hiddenChar;
                 }
                 if (prevBusValue !== null && busValue === prevBusValue) {
                     return '.';

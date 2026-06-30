@@ -647,12 +647,12 @@ def _build_editable_bus_wave_and_data(
                 previous_state = _wave_state("x")
                 continue
 
+            state = ("bus", value)
             if not show_editable_labels:
-                new_chars.append("=")
-                previous_state = None
+                new_chars.append("." if state == previous_state else "=")
+                previous_state = state
                 continue
 
-            state = ("bus", value)
             if state == previous_state:
                 new_chars.append(".")
             else:
