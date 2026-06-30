@@ -38,7 +38,7 @@ var DEFAULT_ALLOWED_VALUES = ['0', '1', 'x'];
 var DEFAULT_SIGNAL_LABEL_HEIGHT = 22;
 var SIGNAL_ROW_VERTICAL_PADDING = 16;
 var FEEDBACK_STATE_CLASSES = 'pl-waveform-correct pl-waveform-incorrect pl-waveform-unanswered pl-waveform-control-error pl-waveform-invalid'.split(' ');
-var GENERATED_OVERLAY_SELECTOR = '.pl-waveform-feedback-overlay, .pl-waveform-diff-marker, .pl-waveform-row-score-badge, .pl-waveform-element-score-badge, .pl-waveform-parse-error, .pl-waveform-parse-error-summary, .pl-waveform-cell-score-badge, .pl-waveform-input-hint';
+var GENERATED_OVERLAY_SELECTOR = '.pl-waveform-feedback-overlay, .pl-waveform-diff-marker, .pl-waveform-row-score-badge, .pl-waveform-element-score-badge, .pl-waveform-parse-error, .pl-waveform-parse-error-summary, .pl-waveform-cell-score-badge, .pl-waveform-input-hint, .pl-waveform-submitted-bus-label';
 
 /** Normalize a raw value for comparison. */
 function normalizeRawValue(value) {
@@ -299,6 +299,45 @@ function takeMatchingLabel(labels, usedLabels, value) {
     return null;
 }
 
+/** Restore WaveDrom bus labels hidden while drawing per-cell submitted labels. */
+function restoreHiddenBusLabels(container) {
+    Array.from(container.querySelectorAll('[data-pl-waveform-hidden-bus-label="true"]')).forEach(function (label) {
+        var originalVisibility = label.getAttribute('data-pl-waveform-original-visibility');
+        label.style.visibility = originalVisibility || '';
+        label.removeAttribute('data-pl-waveform-hidden-bus-label');
+        label.removeAttribute('data-pl-waveform-original-visibility');
+    });
+}
+
+/** Hide one WaveDrom bus label without losing its original inline visibility. */
+function hideWaveDromBusLabel(label) {
+    if (!label.hasAttribute('data-pl-waveform-hidden-bus-label')) {
+        label.setAttribute('data-pl-waveform-original-visibility', label.style.visibility || '');
+    }
+    label.style.visibility = 'hidden';
+    label.setAttribute('data-pl-waveform-hidden-bus-label', 'true');
+}
+
+/** Return a rendered SVG text label's horizontal center in container pixels. */
+function labelCenterX(svg, container, label) {
+    try {
+        var bbox = label.getBBox();
+        var center = toContainerPixels(svg, container, label, bbox.x + bbox.width / 2, bbox.y + bbox.height / 2);
+        return center ? center.x : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+/** Return whether a horizontal position lies inside one submitted cell. */
+function xInSubmittedCell(measurements, cell, x) {
+    var center = getSlotCenterX(measurements, cell.abs_index, cell.period, cell.cycle_num);
+    if (center === null) return false;
+
+    var width = measurements.unitWidth * getSlotPeriod(cell.period, 1);
+    return x >= center - width / 2 && x <= center + width / 2;
+}
+
 /** Move an SVG text node horizontally to a container-local x-coordinate. */
 function moveTextCenterToContainerX(svg, container, textNode, targetX) {
     try {
@@ -319,6 +358,59 @@ function moveTextCenterToContainerX(svg, container, textNode, targetX) {
         var translate = 'translate(' + ((targetX - current.x) / scale) + ' 0)';
         textNode.setAttribute('transform', originalTransform ? originalTransform + ' ' + translate : translate);
     } catch (e) { /* skip labels that cannot be measured */ }
+}
+
+/** Draw one submitted bus label per filled bus cell while leaving the bus wave merged. */
+function renderSubmittedBusLabels(container, measurements, labelCells) {
+    if (container.getAttribute('data-panel') !== 'submission') return;
+
+    var svg = container.querySelector('svg');
+    if (!svg || !measurements) return;
+
+    var cellsBySignal = {};
+    (labelCells || []).forEach(function (cell) {
+        if (!cell.submitted_value) return;
+        if (!cellsBySignal[cell.signal_name]) cellsBySignal[cell.signal_name] = [];
+        cellsBySignal[cell.signal_name].push(cell);
+    });
+
+    Object.keys(cellsBySignal).forEach(function (signalName) {
+        var row = measurements.waveLaneRows.find(function (candidate) {
+            return directWaveLaneLabel(candidate.node) === signalName;
+        });
+        var labels = busDataLabels(row && row.node);
+        if (!row || labels.length === 0) return;
+
+        var parent = labels[0].parentNode;
+        if (!parent) return;
+
+        cellsBySignal[signalName].forEach(function (cell) {
+            var targetX = getSlotCenterX(measurements, cell.abs_index, cell.period, cell.cycle_num);
+            if (targetX === null) return;
+
+            var template = labels.find(function (label) {
+                return label.textContent.trim() === String(cell.submitted_value).trim();
+            }) || labels[0];
+            var clone = template.cloneNode(true);
+            clone.textContent = cell.submitted_value;
+            clone.classList.add('pl-waveform-submitted-bus-label');
+            clone.style.visibility = 'visible';
+            clone.removeAttribute('data-pl-waveform-hidden-bus-label');
+            clone.removeAttribute('data-pl-waveform-original-visibility');
+            clone.removeAttribute('data-pl-waveform-original-transform');
+            parent.appendChild(clone);
+            moveTextCenterToContainerX(svg, container, clone, targetX);
+        });
+
+        labels.forEach(function (label) {
+            var x = labelCenterX(svg, container, label);
+            if (x !== null && cellsBySignal[signalName].some(function (cell) {
+                return xInSubmittedCell(measurements, cell, x);
+            })) {
+                hideWaveDromBusLabel(label);
+            }
+        });
+    });
 }
 
 /** Anchor fixed bus labels to their fixed slots within one WaveDrom row. */
@@ -369,6 +461,7 @@ function removeOverlays(container, selector) {
 /** Remove all generated overlays from a waveform container. */
 function clearGeneratedOverlays(container) {
     removeOverlays(container, GENERATED_OVERLAY_SELECTOR);
+    restoreHiddenBusLabels(container);
 }
 
 /** Clear feedback state classes from a question control. */
@@ -526,6 +619,8 @@ function computeRowBoundsFromCells(cells, firstTickX, unitWidth, fallbackPeriod)
 /** Clear transient feedback styling from a waveform container. */
 function clearScoreFeedbackState(container) {
     removeOverlays(container, '.pl-waveform-cell-score-badge');
+    removeOverlays(container, '.pl-waveform-submitted-bus-label');
+    restoreHiddenBusLabels(container);
 
     getQuestionControls(container).forEach(function (control) {
         clearFeedbackClasses(control);
@@ -1389,6 +1484,15 @@ function initContainer(container) {
             buildTextEditorRowBands(container, measurements);
             repositionFixedBusLabels(container, measurements);
         }
+    }
+
+    if (panel === 'submission' && container.hasAttribute('data-submitted-bus-labels')) {
+        var labelMeasurements = measureSVGPositions(container, getEditableSignals(container));
+        renderSubmittedBusLabels(
+            container,
+            labelMeasurements,
+            parseJsonAttribute(container, 'data-submitted-bus-labels', [])
+        );
     }
 
     if (container.hasAttribute('data-cell-scores')) {

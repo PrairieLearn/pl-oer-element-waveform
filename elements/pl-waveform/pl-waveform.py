@@ -1053,6 +1053,39 @@ def _question_cell_scores(
     return cell_scores
 
 
+def _submitted_bus_label_cells(
+    signals: list[dict[str, Any]], answers_name: str, data: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Build per-cell label metadata for submitted editable bus values."""
+    label_cells = []
+    submitted_answers = data.get("submitted_answers", {})
+    for sig in signals:
+        if not sig.get("editable", False) or not sig.get("is_bus"):
+            continue
+
+        allowed_values = _get_allowed_values(sig)
+        bus_width = sig.get("bus_width")
+        for cell in _editable_cells(sig, answers_name):
+            submitted_raw = submitted_answers.get(cell["key"])
+            if submitted_raw is None:
+                continue
+
+            canonical = _canonical_answer_value(submitted_raw, allowed_values, bus_width)
+            if canonical is None:
+                continue
+
+            label_cells.append(
+                {
+                    "signal_name": sig["signal_label"],
+                    "cycle_num": cell["editable_index"],
+                    "abs_index": cell["abs_index"],
+                    "period": cell["period"],
+                    "submitted_value": canonical,
+                }
+            )
+    return label_cells
+
+
 def _question_render_params(
     element: Any,
     signals: list[dict[str, Any]],
@@ -1139,6 +1172,9 @@ def _submission_render_params(
     total_cells = 0
     correct_count = 0
     max_cycles = 0
+    submitted_bus_label_cells = _submitted_bus_label_cells(
+        signals, answers_name, data
+    )
 
     for sig in signals:
         if not sig.get("editable", False):
@@ -1178,7 +1214,6 @@ def _submission_render_params(
                     "unanswered": is_unanswered,
                 }
             )
-
         row_correct = sum(1 for cell in row_cells if cell["correct"])
         feedback_cells.extend(row_cells)
         total_cells += len(row_cells)
@@ -1213,6 +1248,8 @@ def _submission_render_params(
             hscale,
         ),
         "cell_scores_json": json.dumps(feedback_cells if graded else []),
+        "submitted_bus_labels_json": json.dumps(submitted_bus_label_cells),
+        "has_submitted_bus_labels": len(submitted_bus_label_cells) > 0,
         "editable_signals_json": json.dumps(
             [sig["signal_label"] for sig in signals if sig.get("editable", False)]
         ),
