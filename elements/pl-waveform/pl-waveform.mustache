@@ -7,6 +7,7 @@
      data-parse-errors="{{parse_errors_json}}"
      data-parse-error-cells="{{parse_error_cells_json}}"
      data-feedback="{{feedback}}"
+     {{#has_bus_label_slots}}data-bus-label-slots="{{bus_label_slots_json}}"{{/has_bus_label_slots}}
      {{#has_cell_scores}}data-cell-scores="{{cell_scores_json}}"{{/has_cell_scores}}>
     <script type="WaveDrom">
     {{{wavedrom_json}}}
@@ -66,6 +67,7 @@
      data-parse-errors="{{parse_errors_json}}"
      data-parse-error-cells="{{parse_error_cells_json}}"
      data-feedback="{{feedback}}"
+     {{#has_bus_label_slots}}data-bus-label-slots="{{bus_label_slots_json}}"{{/has_bus_label_slots}}
      {{#has_cell_scores}}data-cell-scores="{{cell_scores_json}}"{{/has_cell_scores}}>
     <script type="WaveDrom">
     {{{wavedrom_json}}}

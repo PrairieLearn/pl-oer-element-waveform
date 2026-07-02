@@ -91,6 +91,17 @@ def _prepare_parse_grade(element_html, data):
     pl_waveform.grade(element_html, data)
 
 
+def _corner_case_params():
+    server_path = COURSE_DIR / "questions" / "waveformCornerCases" / "server.py"
+    spec = importlib.util.spec_from_file_location("waveform_corner_cases", server_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    data = {"params": {}}
+    module.generate(data)
+    return data["params"]
+
+
 def test_submission_template_exposes_read_only_waveform_feedback_metadata() -> None:
     template = (ELEMENT_DIR / "pl-waveform.mustache").read_text()
 
@@ -98,6 +109,7 @@ def test_submission_template_exposes_read_only_waveform_feedback_metadata() -> N
     assert 'data-panel="submission"' in template
     assert 'data-parse-errors="{{parse_errors_json}}"' in template
     assert "data-cell-scores" in template
+    assert "data-bus-label-slots" in template
     assert 'type="WaveDrom"' in template
 
 
@@ -164,6 +176,40 @@ def test_editable_values_create_placeholder_and_correct_wave() -> None:
     assert signal["correct_answers"] == ["1", "1", "0"]
     assert signal["correct_wave"] == "01.0z"
     assert signal["correct_data"] == []
+
+
+def test_fixed_unknown_values_do_not_create_extra_editable_cells() -> None:
+    element_html = '<pl-waveform answers-name="state"></pl-waveform>'
+    data = _base_data(
+        [
+            {"name": "X", "editable": False, "wave": "P.."},
+            {
+                "name": "A",
+                "editable": True,
+                "start_values": ["X"],
+                "values": ["0"],
+                "end_values": ["X"],
+                "allowed_values": ["0", "1", "X"],
+            },
+        ],
+        submitted_answers={"state_A_1": "X"},
+    )
+
+    normalized = _normalize(data["params"]["signals"])
+    signal = normalized[1]
+
+    assert signal["wave"] == "xxx"
+    assert signal["correct_wave"] == "x0x"
+    assert signal["editable_abs_indices"] == [1]
+
+    _prepare_parse_grade(element_html, data)
+    rendered = _render(element_html, data)
+    row_model = json.loads(rendered["editable_row_models_json"])[0]
+
+    assert [cell["abs_index"] for cell in row_model["cells"]] == [1]
+    assert data["correct_answers"] == {"state_A_1": "0"}
+    assert json.loads(data["submitted_answers"]["state_A_1"]) == "X"
+    assert data["partial_scores"]["state_A_1"]["score"] == 0
 
 
 def test_segment_boundaries_use_holds_for_repeated_digital_states() -> None:
@@ -281,37 +327,260 @@ def test_submission_renders_digital_answers_as_bus_when_allowed_values_are_bus()
     _prepare_parse_grade(element_html, data)
     rendered = _render(element_html, data)
     waveform = json.loads(rendered["wavedrom_json"])
+    bus_label_slots = json.loads(rendered["bus_label_slots_json"])
 
     assert waveform["signal"][0]["wave"] == "==="
-    assert waveform["signal"][0]["data"] == ["0", "1", "0"]
+    assert "data" not in waveform["signal"][0]
+    assert [slot["value"] for slot in bus_label_slots] == ["0", "1", "0"]
 
 
-def test_question_text_mode_preserves_fixed_bus_start_labels() -> None:
-    element_html = '<pl-waveform answers-name="accum" input-mode="text"></pl-waveform>'
+def test_submission_keeps_repeated_editable_bus_labels_per_cell() -> None:
+    element_html = '<pl-waveform answers-name="bus" input-mode="text"></pl-waveform>'
     data = _base_data(
         [
-            {"name": "clk", "editable": False, "wave": "P..."},
             {
                 "name": "A",
                 "editable": True,
-                "start_values": ["00"],
-                "values": ["09", "03", "06"],
+                "values": ["10", "10", "10"],
                 "allowed_values": "hex",
                 "bus_width": 2,
             },
         ],
+        panel="submission",
+        submitted_answers={
+            "bus_A_1": "10",
+            "bus_A_2": "10",
+            "bus_A_3": "10",
+        },
+    )
+
+    _prepare_parse_grade(element_html, data)
+    rendered = _render(element_html, data)
+    waveform = json.loads(rendered["wavedrom_json"])
+    bus_label_slots = json.loads(rendered["bus_label_slots_json"])
+
+    assert waveform["signal"][0]["wave"] == "=.."
+    assert "data" not in waveform["signal"][0]
+    assert [slot["value"] for slot in bus_label_slots] == [
+        "10",
+        "10",
+        "10",
+    ]
+
+
+def test_submission_keeps_repeated_bus_labels_per_cell_with_blank_errors() -> None:
+    element_html = '<pl-waveform answers-name="bus" input-mode="text"></pl-waveform>'
+    data = _base_data(
+        [
+            {
+                "name": "A",
+                "editable": True,
+                "values": ["10", "10", "10", "00"],
+                "allowed_values": "hex",
+                "bus_width": 2,
+            },
+        ],
+        panel="submission",
+        submitted_answers={
+            "bus_A_1": "10",
+            "bus_A_2": "10",
+            "bus_A_3": "10",
+            "bus_A_4": "",
+        },
+    )
+
+    _prepare_parse_grade(element_html, data)
+    rendered = _render(element_html, data)
+    waveform = json.loads(rendered["wavedrom_json"])
+    cell_scores = json.loads(rendered["cell_scores_json"])
+    bus_label_slots = json.loads(rendered["bus_label_slots_json"])
+
+    assert waveform["signal"][0]["wave"] == "=..x"
+    assert "data" not in waveform["signal"][0]
+    assert cell_scores == []
+    assert [slot["value"] for slot in bus_label_slots] == [
+        "10",
+        "10",
+        "10",
+    ]
+    assert rendered["has_bus_label_slots"] is True
+
+
+def test_question_text_mode_renders_bus_cells_from_input_state() -> None:
+    element_html = '<pl-waveform answers-name="accum" input-mode="text"></pl-waveform>'
+    signals = [
+        {"name": "clk", "editable": False, "wave": "P..."},
+        {
+            "name": "A",
+            "editable": True,
+            "start_values": ["00"],
+            "values": ["09", "03", "06"],
+            "allowed_values": "hex",
+            "bus_width": 2,
+        },
+    ]
+    empty_data = _base_data(signals)
+    filled_data = _base_data(
+        signals,
         raw_submitted_answers={
-            "accum_A_1": "09",
+            "accum_A_1": "00",
             "accum_A_2": "03",
             "accum_A_3": "06",
         },
     )
 
-    rendered = _render(element_html, data)
+    rendered = _render(element_html, empty_data)
     waveform = json.loads(rendered["wavedrom_json"])
+    bus_label_slots = json.loads(rendered["bus_label_slots_json"])
 
     assert waveform["signal"][1]["wave"] == "=xxx"
-    assert waveform["signal"][1]["data"] == ["00"]
+    assert "data" not in waveform["signal"][1]
+    assert [slot["value"] for slot in bus_label_slots] == ["00"]
+
+    rendered = _render(element_html, filled_data)
+    waveform = json.loads(rendered["wavedrom_json"])
+    bus_label_slots = json.loads(rendered["bus_label_slots_json"])
+
+    assert waveform["signal"][1]["wave"] == "=.=="
+    assert "data" not in waveform["signal"][1]
+    assert [slot["value"] for slot in bus_label_slots] == ["00"]
+
+
+def test_corner_case_question_signal_sets_validate() -> None:
+    params = _corner_case_params()
+    signal_sets = {
+        "dff_signals": "dff",
+        "regfile_signals": "regfile",
+        "overlap_signals": "overlap",
+        "msi_signals": "msi",
+    }
+
+    for param_name, answers_name in signal_sets.items():
+        signals = _normalize(params[param_name])
+        pl_waveform._validate_signals(signals, answers_name)  # noqa: SLF001
+
+
+def test_corner_case_question_preserves_formatted_half_cycle_rows() -> None:
+    params = _corner_case_params()
+    element_html = (
+        '<pl-waveform answers-name="dff" input-mode="toggle" '
+        'signals-param="dff_signals"></pl-waveform>'
+    )
+    data = _base_data(params["dff_signals"])
+    data["params"]["dff_signals"] = data["params"].pop("signals")
+
+    pl_waveform.prepare(element_html, data)
+    rendered = _render(element_html, data)
+    waveform = json.loads(rendered["wavedrom_json"])
+    q_model = json.loads(rendered["editable_row_models_json"])[0]
+
+    assert waveform["signal"][1]["name"] == ["tspan", {"class": "h4"}, " reset"]
+    assert waveform["signal"][1]["period"] == 0.5
+    assert q_model["signal_name"] == " Q"
+    assert q_model["signal_key"] == "Q"
+    assert q_model["period"] == 0.5
+
+
+def test_corner_case_text_bus_repeated_values_render_as_holds() -> None:
+    params = _corner_case_params()
+    element_html = (
+        '<pl-waveform answers-name="regfile" input-mode="text" '
+        'signals-param="regfile_signals"></pl-waveform>'
+    )
+    data = _base_data(
+        params["regfile_signals"],
+        raw_submitted_answers={
+            "regfile_accum_1": "00",
+            "regfile_accum_2": "A5",
+            "regfile_accum_3": "3C",
+            "regfile_nibble_1": "0",
+            "regfile_nibble_2": "F",
+            "regfile_nibble_3": "3",
+        },
+    )
+    data["params"]["regfile_signals"] = data["params"].pop("signals")
+
+    rendered = _render(element_html, data)
+    waveform = json.loads(rendered["wavedrom_json"])
+    bus_label_slots = json.loads(rendered["bus_label_slots_json"])
+    accum = waveform["signal"][5]
+    nibble = waveform["signal"][6]
+
+    assert accum["wave"] == "=.=="
+    assert nibble["wave"] == "=.=="
+    assert "data" not in accum
+    assert "data" not in nibble
+    assert [slot["value"] for slot in bus_label_slots] == ["00", "0"]
+
+
+def test_corner_case_overlap_values_use_distinct_signal_keys() -> None:
+    params = _corner_case_params()
+    element_html = (
+        '<pl-waveform answers-name="overlap" input-mode="text" '
+        'signals-param="overlap_signals"></pl-waveform>'
+    )
+    data = _base_data(params["overlap_signals"])
+    data["params"]["overlap_signals"] = data["params"].pop("signals")
+
+    pl_waveform.prepare(element_html, data)
+    rendered = _render(element_html, data)
+    waveform = json.loads(rendered["wavedrom_json"])
+    row_models = json.loads(rendered["editable_row_models_json"])
+    state_slots = [
+        slot
+        for slot in json.loads(rendered["bus_label_slots_json"])
+        if slot["signal_name"] == "State"
+    ]
+
+    assert waveform["signal"][3]["wave"] == "===xx"
+    assert "data" not in waveform["signal"][3]
+    assert [slot["value"] for slot in state_slots] == ["W", "A", "S"]
+    assert row_models[1]["signal_key"] == "State"
+    assert row_models[1]["cells"][0]["key"] == "overlap_State_1"
+    assert row_models[2]["signal_key"] == "SAB"
+    assert row_models[2]["wave"] == "xxxxx"
+    assert row_models[2]["cells"][0]["abs_index"] == 1
+
+
+def test_bus_start_values_can_match_signal_names() -> None:
+    element_html = '<pl-waveform answers-name="fsm" input-mode="text"></pl-waveform>'
+    data = _base_data(
+        [
+            {"name": "clk", "editable": False, "wave": "P....."},
+            {"name": "A", "editable": True, "values": ["0", "1", "1", "0", "0", "1"]},
+            {
+                "name": "State",
+                "editable": True,
+                "start_values": ["W", "A", "S", "D"],
+                "values": ["W", "D"],
+                "allowed_values": ["W", "A", "S", "D"],
+            },
+        ]
+    )
+
+    pl_waveform.prepare(element_html, data)
+    rendered = _render(element_html, data)
+    waveform = json.loads(rendered["wavedrom_json"])
+    state_row = waveform["signal"][2]
+    state_slots = [
+        slot
+        for slot in json.loads(rendered["bus_label_slots_json"])
+        if slot["signal_name"] == "State"
+    ]
+
+    assert state_row["wave"] == "====xx"
+    assert "data" not in state_row
+    assert [slot["value"] for slot in state_slots] == ["W", "A", "S", "D"]
+    assert data["correct_answers"] == {
+        "fsm_A_1": "0",
+        "fsm_A_2": "1",
+        "fsm_A_3": "1",
+        "fsm_A_4": "0",
+        "fsm_A_5": "0",
+        "fsm_A_6": "1",
+        "fsm_State_1": "W",
+        "fsm_State_2": "D",
+    }
 
 
 def test_editable_z_is_inferred_as_a_digital_allowed_value() -> None:
@@ -335,6 +604,60 @@ def test_editable_z_is_inferred_as_a_digital_allowed_value() -> None:
     }
     assert json.loads(data["submitted_answers"]["tri_Y_1"]) == "z"
     assert all(score["score"] == 1 for score in data["partial_scores"].values())
+
+
+def test_state_value_signal_names_grade_as_distinct_signal_keys() -> None:
+    element_html = '<pl-waveform answers-name="state"></pl-waveform>'
+    data = _base_data(
+        [
+            {"name": "clk", "editable": False, "wave": "P."},
+            {"name": "0", "editable": True, "values": ["1", "0"]},
+            {"name": "1", "editable": True, "values": ["0", "1"]},
+            {"name": "x", "editable": True, "values": ["x", "1"]},
+            {"name": "z", "editable": True, "values": ["z", "0"]},
+        ],
+        panel="submission",
+        submitted_answers={
+            "state_0_1": "1",
+            "state_0_2": "0",
+            "state_1_1": "0",
+            "state_1_2": "1",
+            "state_x_1": "x",
+            "state_x_2": "1",
+            "state_z_1": "z",
+            "state_z_2": "0",
+        },
+    )
+
+    _prepare_parse_grade(element_html, data)
+    rendered = _render(element_html, data)
+    waveform = json.loads(rendered["wavedrom_json"])
+
+    assert data["correct_answers"] == {
+        "state_0_1": "1",
+        "state_0_2": "0",
+        "state_1_1": "0",
+        "state_1_2": "1",
+        "state_x_1": "x",
+        "state_x_2": "1",
+        "state_z_1": "z",
+        "state_z_2": "0",
+    }
+    assert rendered["correct_count"] == 8
+    assert rendered["total_cells"] == 8
+    assert [signal["name"] for signal in waveform["signal"]] == [
+        "clk",
+        "0",
+        "1",
+        "x",
+        "z",
+    ]
+    assert [signal["wave"] for signal in waveform["signal"][1:]] == [
+        "10",
+        "01",
+        "x1",
+        "z0",
+    ]
 
 
 def test_text_input_invalid_values_report_format_errors_during_parse() -> None:
@@ -653,6 +976,38 @@ def test_array_signal_name_preserves_wavedrom_display_and_uses_text_key() -> Non
     assert row_model["display_name"] == formatted_name
 
 
+def test_formatted_signal_name_can_start_with_space() -> None:
+    formatted_name = ["tspan", {"class": "error h4"}, " reg0"]
+    element_html = '<pl-waveform answers-name="registers"></pl-waveform>'
+    data = _base_data(
+        [
+            {"name": "clk", "editable": False, "wave": "P."},
+            {
+                "name": formatted_name,
+                "editable": True,
+                "values": ["A", "F"],
+                "allowed_values": "hex",
+            },
+        ]
+    )
+
+    pl_waveform.prepare(element_html, data)
+    rendered = _render(element_html, data)
+    waveform = json.loads(rendered["wavedrom_json"])
+    row_model = json.loads(rendered["editable_row_models_json"])[0]
+
+    assert waveform["signal"][1]["name"] == formatted_name
+    assert data["correct_answers"] == {
+        "registers_reg0_1": "A",
+        "registers_reg0_2": "F",
+    }
+    assert json.loads(rendered["editable_signals_json"]) == [" reg0"]
+    assert rendered["editable_rows"][0]["signal_name"] == " reg0"
+    assert row_model["signal_name"] == " reg0"
+    assert row_model["signal_key"] == "reg0"
+    assert row_model["display_name"] == formatted_name
+
+
 def test_text_mode_metadata_supports_single_and_multicharacter_values() -> None:
     element_html = '<pl-waveform answers-name="decode" input-mode="text"></pl-waveform>'
     data = _base_data(
@@ -735,6 +1090,7 @@ def test_hex_allowed_values_grade_case_insensitively_and_render_as_bus() -> None
     _prepare_parse_grade(element_html, data)
     rendered = _render(element_html, data)
     waveform = json.loads(rendered["wavedrom_json"])
+    bus_label_slots = json.loads(rendered["bus_label_slots_json"])
 
     assert data["correct_answers"] == {
         "hex_rdata_1": "A",
@@ -745,7 +1101,8 @@ def test_hex_allowed_values_grade_case_insensitively_and_render_as_bus() -> None
     assert data["partial_scores"]["hex_rdata_1"]["score"] == 1
     assert data["partial_scores"]["hex_rdata_2"]["score"] == 1
     assert waveform["signal"][1]["wave"] == "=="
-    assert waveform["signal"][1]["data"] == ["A", "F"]
+    assert "data" not in waveform["signal"][1]
+    assert [slot["value"] for slot in bus_label_slots] == ["A", "F"]
     assert rendered["result_rows"][0]["cells"][0]["submitted"] == "A"
 
     data["panel"] = "question"
@@ -774,6 +1131,7 @@ def test_bus_width_uses_allowed_values_as_a_character_alphabet() -> None:
     _prepare_parse_grade(element_html, data)
     rendered = _render(element_html, data)
     waveform = json.loads(rendered["wavedrom_json"])
+    bus_label_slots = json.loads(rendered["bus_label_slots_json"])
 
     assert data["correct_answers"] == {
         "wide_byte_1": "DE",
@@ -782,7 +1140,8 @@ def test_bus_width_uses_allowed_values_as_a_character_alphabet() -> None:
     assert json.loads(data["submitted_answers"]["wide_byte_1"]) == "DE"
     assert data["partial_scores"]["wide_byte_1"]["score"] == 1
     assert waveform["signal"][0]["wave"] == "=="
-    assert waveform["signal"][0]["data"] == ["DE", "AD"]
+    assert "data" not in waveform["signal"][0]
+    assert [slot["value"] for slot in bus_label_slots] == ["DE", "AD"]
     assert rendered["result_rows"][0]["cells"][0]["submitted"] == "DE"
 
     data["panel"] = "question"

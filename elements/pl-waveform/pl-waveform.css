@@ -25,6 +25,21 @@
     fill: #e9ecef !important;
 }
 
+/* Bus labels that must be centered on specific cells are drawn by PL rather
+   than WaveDrom. WaveDrom labels are transition-based, which would merge equal
+   adjacent editable values or center fixed labels into editable input cells. */
+.pl-waveform-bus-label-slot {
+    position: absolute;
+    z-index: 6;
+    transform: translate(-50%, -50%);
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 14px;
+    line-height: 1;
+    color: #000;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
 /* ── Question panel: text fallback controls ───────────────────── */
 .pl-waveform-question-control {
     box-sizing: border-box;

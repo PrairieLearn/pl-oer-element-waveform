@@ -38,7 +38,7 @@ var DEFAULT_ALLOWED_VALUES = ['0', '1', 'x'];
 var DEFAULT_SIGNAL_LABEL_HEIGHT = 22;
 var SIGNAL_ROW_VERTICAL_PADDING = 16;
 var FEEDBACK_STATE_CLASSES = 'pl-waveform-correct pl-waveform-incorrect pl-waveform-unanswered pl-waveform-control-error pl-waveform-invalid'.split(' ');
-var GENERATED_OVERLAY_SELECTOR = '.pl-waveform-feedback-overlay, .pl-waveform-diff-marker, .pl-waveform-row-score-badge, .pl-waveform-element-score-badge, .pl-waveform-parse-error, .pl-waveform-parse-error-summary, .pl-waveform-cell-score-badge, .pl-waveform-input-hint';
+var GENERATED_OVERLAY_SELECTOR = '.pl-waveform-feedback-overlay, .pl-waveform-diff-marker, .pl-waveform-row-score-badge, .pl-waveform-element-score-badge, .pl-waveform-parse-error, .pl-waveform-parse-error-summary, .pl-waveform-cell-score-badge, .pl-waveform-input-hint, .pl-waveform-bus-label-slot';
 
 /** Normalize a raw value for comparison. */
 function normalizeRawValue(value) {
@@ -104,7 +104,7 @@ function getBusWidth(controlOrRow) {
     return Number.isFinite(width) && width > 0 ? width : null;
 }
 
-/** Convert element-local coordinates into SVG viewport coordinates. */
+/** Convert SVG node-local coordinates into SVG viewport coordinates. */
 function toSVGPixels(svg, el, localX, localY) {
     try {
         var pt = svg.createSVGPoint();
@@ -175,6 +175,7 @@ function measureSVGPositions(container, signalNames) {
         tickXMap: tickXMap,
         signalYMap: signalYMap,
         signalBoundsMap: signalBoundsMap,
+        waveLaneRows: rows,
         sortedTicks: sortedTicks,
         unitWidth: unitWidth
     };
@@ -260,6 +261,29 @@ function setSignalRowMeasurement(signalYMap, signalBoundsMap, label, row) {
         bottom: bottom,
         height: bottom - top
     };
+}
+
+/** Draw bus labels that PL owns instead of WaveDrom.
+ *
+ * WaveDrom centers labels over bus transitions. Editable bus rows sometimes
+ * need labels centered on individual cells while the bus itself stays held.
+ * Python omits those labels from WaveDrom data and sends explicit slots here.
+ */
+function renderBusLabelSlots(container, measurements, slots) {
+    if (!measurements || !Array.isArray(slots)) return;
+
+    slots.forEach(function (slot) {
+        var sigY = measurements.signalYMap[slot.signal_name];
+        var centerX = getSlotCenterX(measurements, slot.abs_index, slot.period, slot.cycle_num);
+        if (sigY === undefined || centerX === null || slot.value === undefined || slot.value === null) return;
+
+        var label = document.createElement('div');
+        label.className = 'pl-waveform-bus-label-slot';
+        label.textContent = String(slot.value);
+        label.style.left = Math.round(centerX) + 'px';
+        label.style.top = Math.round(sigY) + 'px';
+        container.appendChild(label);
+    });
 }
 
 /** Remove all overlay elements matching a selector from a container. */
@@ -484,7 +508,7 @@ function prepareWaveDromModel(model) {
     return model;
 }
 
-/** Render the WaveDrom scripts owned by this element. */
+/** Render the WaveDrom scripts owned by this waveform. */
 function renderWaveDromScripts() {
     $('.pl-waveform script[type="WaveDrom"]').each(function (idx) {
         var script = this;
@@ -559,9 +583,50 @@ function parseJsonScript(container, selector, fallback) {
     }
 }
 
+/** Parse JSON from a data attribute, falling back on invalid input. */
+function parseJsonAttribute(node, attributeName, fallback) {
+    try {
+        var raw = node.getAttribute(attributeName);
+        return raw ? JSON.parse(raw) : fallback;
+    } catch (e) {
+        return fallback;
+    }
+}
+
 /** Deep-clone a JSON-compatible value. */
 function cloneJSON(value) {
     return JSON.parse(JSON.stringify(value));
+}
+
+/** Build a lookup table for row cells by absolute waveform index. */
+function cellsByAbsIndex(rowModel) {
+    var cells = {};
+    (rowModel.cells || []).forEach(function (cell) {
+        cells[cell.abs_index] = cell;
+    });
+    return cells;
+}
+
+/** Apply absolute box geometry to a positioned node. */
+function setBoxGeometry(node, left, top, width, height) {
+    node.style.left = Math.round(left) + 'px';
+    node.style.top = Math.round(top) + 'px';
+    node.style.width = Math.round(width) + 'px';
+    node.style.height = Math.round(height) + 'px';
+}
+
+/** Stable map key for signal/cycle metadata. */
+function signalCycleKey(signalName, cycleNum) {
+    return signalName + '|' + cycleNum;
+}
+
+/** Build a lookup for cell metadata keyed by signal and cycle. */
+function cellsBySignalCycle(cells) {
+    var byKey = {};
+    (cells || []).forEach(function (cell) {
+        byKey[signalCycleKey(cell.signal_name, cell.cycle_num)] = cell;
+    });
+    return byKey;
 }
 
 /** Return the cached base WaveDrom model for a container. */
@@ -592,13 +657,19 @@ function rerenderWaveDrom(container, model) {
 
 /** Find a signal entry by display name within a WaveDrom model. */
 function findWaveDromSignal(model, signalName) {
-    if (!model || !Array.isArray(model.signal)) return null;
+    var signalIndex = findWaveDromSignalIndex(model, signalName);
+    return signalIndex >= 0 ? model.signal[signalIndex] : null;
+}
+
+/** Find the index of a signal entry by display name within a WaveDrom model. */
+function findWaveDromSignalIndex(model, signalName) {
+    if (!model || !Array.isArray(model.signal)) return -1;
     for (var idx = 0; idx < model.signal.length; idx += 1) {
         if (model.signal[idx] && JSON.stringify(model.signal[idx].name) === JSON.stringify(signalName)) {
-            return model.signal[idx];
+            return idx;
         }
     }
-    return null;
+    return -1;
 }
 
 /** Resolve the current value for a rendered cell or hidden input. */
@@ -609,6 +680,74 @@ function getControlValue(container, cell, allowedValues, busWidth) {
     });
     if (!control) return '';
     return normalizeEditableValue(control.value || control.getAttribute('data-value'), allowedValues, busWidth);
+}
+
+/** Apply editable bus cell values to a WaveDrom wave/data pair. */
+function buildEditableBusWave(container, rowModel, waveChars, cellMap, allowedValues, busWidth) {
+    var dataValues = [];
+    var prevBusValue = null;
+    var fixedData = Array.isArray(rowModel.data) ? rowModel.data.slice() : [];
+    var fixedDataIdx = 0;
+    var showEditableBusLabels = getInputMode(container) !== 'text';
+
+    var renderedWave = waveChars.map(function (ch, absIndex) {
+        var cell = cellMap[absIndex];
+        if (cell) {
+            var busValue = getControlValue(container, cell, allowedValues, busWidth);
+            if (busValue === '') {
+                prevBusValue = null;
+                return 'x';
+            }
+            if (!showEditableBusLabels) {
+                var hiddenChar = prevBusValue !== null && busValue === prevBusValue ? '.' : '=';
+                prevBusValue = busValue;
+                return hiddenChar;
+            }
+            if (prevBusValue !== null && busValue === prevBusValue) return '.';
+            dataValues.push(busValue);
+            prevBusValue = busValue;
+            return '=';
+        }
+
+        if (ch === '=') {
+            var fixedVal = fixedData[fixedDataIdx++];
+            if (fixedVal !== undefined) {
+                if (prevBusValue !== null && fixedVal === prevBusValue) {
+                    prevBusValue = fixedVal;
+                    return '.';
+                }
+                if (showEditableBusLabels) dataValues.push(fixedVal);
+                prevBusValue = fixedVal;
+            } else {
+                prevBusValue = null;
+            }
+        } else if (ch === 'x') {
+            prevBusValue = null;
+        }
+        return ch;
+    });
+
+    return { wave: renderedWave.join(''), data: dataValues };
+}
+
+/** Apply editable digital cell values to a WaveDrom wave string. */
+function buildEditableDigitalWave(container, rowModel, waveChars, cellMap, allowedValues, busWidth) {
+    var prevValue = null;
+    return waveChars.map(function (ch, absIndex) {
+        var cell = cellMap[absIndex];
+        if (cell) {
+            var value = getControlValue(container, cell, allowedValues, busWidth) || 'x';
+            if (value !== 'x' && value === prevValue) return '.';
+            // Reset prevValue on 'x' so the next cell always emits a full
+            // character rather than '.'. Without this, a sequence like 0->x->0
+            // would produce '0x.' (extending the x) instead of '0x0'.
+            prevValue = (value !== 'x') ? value : null;
+            return value;
+        }
+
+        if (ch !== '.') prevValue = ch;
+        return ch;
+    }).join('');
 }
 
 /** Apply editable row values back onto the underlying WaveDrom signal. */
@@ -623,82 +762,19 @@ function applyEditableRowToSignal(container, signalModel, rowModel) {
     }
 
     var waveChars = String(rowModel.wave || '').split('');
-    var cellsByAbsIndex = {};
+    var cellMap = cellsByAbsIndex(rowModel);
     var allowedValues = getAllowedValues(rowModel);
     var busWidth = getBusWidth(rowModel);
-    rowModel.cells.forEach(function (cell) {
-        cellsByAbsIndex[cell.abs_index] = cell;
-    });
 
     if (rowModel.is_bus) {
-        var dataValues = [];
-        var prevBusValue = null;
-        var fixedData = Array.isArray(rowModel.data) ? rowModel.data.slice() : [];
-        var fixedDataIdx = 0;
-        var showEditableBusValues = getInputMode(container) !== 'text';
-
-        waveChars = waveChars.map(function (ch, absIndex) {
-            var cell = cellsByAbsIndex[absIndex];
-            if (cell) {
-                if (!showEditableBusValues) {
-                    prevBusValue = null;
-                    return 'x';
-                }
-                var busValue = getControlValue(container, cell, allowedValues, busWidth);
-                if (busValue === '') {
-                    prevBusValue = null;
-                    return 'x';
-                }
-                if (prevBusValue !== null && busValue === prevBusValue) {
-                    return '.';
-                }
-                dataValues.push(busValue);
-                prevBusValue = busValue;
-                return '=';
-            }
-
-            if (ch === '=') {
-                // Fixed (non-editable) bus slot: carry original data value through.
-                var fixedVal = fixedData[fixedDataIdx++];
-                if (fixedVal !== undefined) {
-                    if (prevBusValue !== null && fixedVal === prevBusValue) {
-                        prevBusValue = fixedVal;
-                        return '.';
-                    }
-                    dataValues.push(fixedVal);
-                    prevBusValue = fixedVal;
-                } else {
-                    prevBusValue = null;
-                }
-            } else if (ch === 'x') {
-                prevBusValue = null;
-            }
-            return ch;
-        });
-
-        signalModel.wave = waveChars.join('');
-        if (dataValues.length > 0) signalModel.data = dataValues;
+        var bus = buildEditableBusWave(container, rowModel, waveChars, cellMap, allowedValues, busWidth);
+        signalModel.wave = bus.wave;
+        if (bus.data.length > 0) signalModel.data = bus.data;
         else delete signalModel.data;
         return;
     }
 
-    var prevValue = null;
-    waveChars = waveChars.map(function (ch, absIndex) {
-        var cell = cellsByAbsIndex[absIndex];
-        if (cell) {
-            var value = getControlValue(container, cell, allowedValues, busWidth) || 'x';
-            if (value !== 'x' && value === prevValue) return '.';
-            // Reset prevValue on 'x' so the next cell always emits a full
-            // character rather than '.'. Without this, a sequence like 0→x→0
-            // would produce '0x.' (extending the x) instead of '0x0'.
-            prevValue = (value !== 'x') ? value : null;
-            return value;
-        }
-
-        if (ch !== '.') prevValue = ch;
-        return ch;
-    });
-    signalModel.wave = waveChars.join('');
+    signalModel.wave = buildEditableDigitalWave(container, rowModel, waveChars, cellMap, allowedValues, busWidth);
 }
 
 /** Recompute the question WaveDrom model after an edit. */
@@ -1038,10 +1114,7 @@ function createToggleRowElement(container, rowModel, firstTickX, unitWidth, rowY
     rowElement.setAttribute('data-signal', rowModel.signal_name);
     rowElement.setAttribute('data-allowed-values', JSON.stringify(rowModel.allowed_values || DEFAULT_ALLOWED_VALUES));
     if (rowModel.bus_width) rowElement.setAttribute('data-bus-width', rowModel.bus_width);
-    rowElement.style.left = Math.round(rowBounds.left) + 'px';
-    rowElement.style.top = Math.round(rowY.top) + 'px';
-    rowElement.style.width = Math.round(rowBounds.right - rowBounds.left) + 'px';
-    rowElement.style.height = Math.round(rowY.height) + 'px';
+    setBoxGeometry(rowElement, rowBounds.left, rowY.top, rowBounds.right - rowBounds.left, rowY.height);
 
     rowModel.cells.forEach(function (cell) {
         if (!cell.editable) return;
@@ -1057,10 +1130,13 @@ function createToggleRowElement(container, rowModel, firstTickX, unitWidth, rowY
         hitTarget.setAttribute('data-allowed-values', JSON.stringify(rowModel.allowed_values || DEFAULT_ALLOWED_VALUES));
         if (rowModel.bus_width) hitTarget.setAttribute('data-bus-width', rowModel.bus_width);
         hitTarget.setAttribute('aria-label', cell.aria_label);
-        hitTarget.style.left = Math.round(firstTickX + (cell.abs_index * unitWidth * cellPeriod) - rowBounds.left) + 'px';
-        hitTarget.style.top = '0';
-        hitTarget.style.width = Math.round(unitWidth * cellPeriod) + 'px';
-        hitTarget.style.height = Math.round(rowY.height) + 'px';
+        setBoxGeometry(
+            hitTarget,
+            firstTickX + (cell.abs_index * unitWidth * cellPeriod) - rowBounds.left,
+            0,
+            unitWidth * cellPeriod,
+            rowY.height
+        );
 
         var hiddenInput = document.getElementById('pl-wf-hidden-' + cell.key);
         if (hiddenInput && hiddenInput.disabled) {
@@ -1083,14 +1159,13 @@ function createToggleRowElement(container, rowModel, firstTickX, unitWidth, rowY
 // .pl-waveform-editor-row div that spans its full editable width, giving the
 // same blue-tinted visual cue as toggle mode without any interactive elements.
 /** Build non-interactive background bands for text-mode editing. */
-function buildTextEditorRowBands(container) {
+function buildTextEditorRowBands(container, measurements) {
     var editorLayer = container.querySelector('.pl-waveform-editor-layer');
     if (!editorLayer) return;
 
     editorLayer.innerHTML = '';
 
-    var editableSignals = getEditableSignals(container);
-    var m = measureSVGPositions(container, editableSignals);
+    var m = measurements || measureSVGPositions(container, getEditableSignals(container));
     if (!m || m.sortedTicks.length === 0) return;
 
     var baseRows = getEditableRowModels(container);
@@ -1106,10 +1181,7 @@ function buildTextEditorRowBands(container) {
         var band = document.createElement('div');
         band.className = 'pl-waveform-editor-row';
         band.setAttribute('data-signal', baseRow.signal_name);
-        band.style.left = Math.round(rowBounds.left) + 'px';
-        band.style.top = Math.round(rowY.top) + 'px';
-        band.style.width = Math.round(rowBounds.right - rowBounds.left) + 'px';
-        band.style.height = Math.round(rowY.height) + 'px';
+        setBoxGeometry(band, rowBounds.left, rowY.top, rowBounds.right - rowBounds.left, rowY.height);
         editorLayer.appendChild(band);
     });
 }
@@ -1181,9 +1253,8 @@ function focusAdjacentRenderedCell(control, delta) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Position text-mode inputs over the matching waveform slots. */
-function positionTextInputs(container) {
-    var editableSignals = getEditableSignals(container);
-    var m = measureSVGPositions(container, editableSignals);
+function positionTextInputs(container, measurements) {
+    var m = measurements || measureSVGPositions(container, getEditableSignals(container));
     if (!m || m.sortedTicks.length === 0) return;
 
     var inputH = 22;
@@ -1211,10 +1282,7 @@ function positionTextInputs(container) {
         }
 
         inp.style.position = 'absolute';
-        inp.style.left = Math.round(centreX - inputW / 2) + 'px';
-        inp.style.top = Math.round(sigY - inputH / 2) + 'px';
-        inp.style.width = inputW + 'px';
-        inp.style.height = inputH + 'px';
+        setBoxGeometry(inp, centreX - inputW / 2, sigY - inputH / 2, inputW, inputH);
         inp.style.margin = '0';
         inp.style.visibility = 'visible';
         inp.style.display = 'inline-block';
@@ -1242,9 +1310,19 @@ function initContainer(container) {
         if (inputMode === 'toggle') {
             buildToggleEditor(container);
         } else {
-            positionTextInputs(container);
-            buildTextEditorRowBands(container);
+            var measurements = measureSVGPositions(container, getEditableSignals(container));
+            positionTextInputs(container, measurements);
+            buildTextEditorRowBands(container, measurements);
         }
+    }
+
+    if (container.hasAttribute('data-bus-label-slots')) {
+        var labelMeasurements = measureSVGPositions(container, getEditableSignals(container));
+        renderBusLabelSlots(
+            container,
+            labelMeasurements,
+            parseJsonAttribute(container, 'data-bus-label-slots', [])
+        );
     }
 
     if (container.hasAttribute('data-cell-scores')) {
@@ -1280,10 +1358,7 @@ function appendCellOverlay(container, m, signalName, cycleNum, className, absInd
     var overlayW = Math.max(18, m.unitWidth * getSlotPeriod(period, 1) * 0.85);
     var rowY = getSignalRowBounds(m, signalName, sigY, 28);
 
-    overlay.style.left = Math.round(centreX - overlayW / 2) + 'px';
-    overlay.style.top = Math.round(rowY.top) + 'px';
-    overlay.style.width = Math.round(overlayW) + 'px';
-    overlay.style.height = Math.round(rowY.height) + 'px';
+    setBoxGeometry(overlay, centreX - overlayW / 2, rowY.top, overlayW, rowY.height);
 
     if (text) {
         var badge = document.createElement('span');
@@ -1333,10 +1408,7 @@ function cellFeedbackClass(cell) {
 /** Render answer-vs-student diff markers. */
 function renderDiffMarkers(container) {
     var editableSignals = getEditableSignals(container);
-    var diffCells = [];
-    try {
-        diffCells = JSON.parse(container.getAttribute('data-diff') || '[]');
-    } catch (e) { return; }
+    var diffCells = parseJsonAttribute(container, 'data-diff', []);
 
     var m = measureSVGPositions(container, editableSignals);
     if (!m) return;
@@ -1392,10 +1464,7 @@ function positionParseErrorBadge(container, control, badge) {
     var relL = controlRect.left - containerRect.left;
     var relT = controlRect.top - containerRect.top;
 
-    badge.style.left = Math.round(relL + controlRect.width - badgeSize / 2) + 'px';
-    badge.style.top = Math.round(relT - badgeSize / 2) + 'px';
-    badge.style.width = badgeSize + 'px';
-    badge.style.height = badgeSize + 'px';
+    setBoxGeometry(badge, relL + controlRect.width - badgeSize / 2, relT - badgeSize / 2, badgeSize, badgeSize);
 }
 
 /** Return the vertical midpoint of editable signal rows. */
@@ -1423,21 +1492,21 @@ function waveformRightEdge(container) {
     return svg.getBoundingClientRect().right - containerRect.left;
 }
 
-/** Position a whole-element badge immediately to the right of the drawing. */
-function positionWholeElementBadge(container, badge, m, editableSignals, fallbackY) {
+/** Position a whole-waveform badge immediately to the right of the drawing. */
+function positionWaveformBadge(container, badge, m, editableSignals, fallbackY) {
     var midY = editableSignalMidY(m, editableSignals, fallbackY);
     badge.style.left = Math.round(waveformRightEdge(container) + 8) + 'px';
     badge.style.top = Math.round(midY - 14) + 'px';
 }
 
-/** Add the element-level invalid-input warning beside a waveform. */
+/** Add the waveform-level invalid-input warning beside a waveform. */
 function appendParseErrorSummary(container, count, m, editableSignals) {
     var badge = document.createElement('div');
     badge.className = 'pl-waveform-parse-error-summary';
     badge.textContent = 'Input values were invalid';
     badge.title = count + ' invalid input value' + (count === 1 ? '' : 's');
 
-    positionWholeElementBadge(container, badge, m, editableSignals, 18);
+    positionWaveformBadge(container, badge, m, editableSignals, 18);
     container.appendChild(badge);
 }
 
@@ -1454,10 +1523,7 @@ function appendParseErrorCellOverlay(container, m, cell, message) {
     overlay.className = 'pl-waveform-feedback-overlay pl-waveform-parse-error-cell-overlay';
     overlay.title = message;
     overlay.setAttribute('aria-label', message);
-    overlay.style.left = Math.round(centreX - overlayW / 2) + 'px';
-    overlay.style.top = Math.round(rowY.top) + 'px';
-    overlay.style.width = Math.round(overlayW) + 'px';
-    overlay.style.height = Math.round(rowY.height) + 'px';
+    setBoxGeometry(overlay, centreX - overlayW / 2, rowY.top, overlayW, rowY.height);
 
     var badge = createParseErrorBadge(cell.key, message);
     badge.classList.add('pl-waveform-parse-error-corner');
@@ -1467,12 +1533,8 @@ function appendParseErrorCellOverlay(container, m, cell, message) {
 
 /** Render parse-error badges over invalid controls or read-only cells. */
 function renderParseErrorOverlays(container) {
-    var parseErrors = {};
-    var parseErrorCells = [];
-    try {
-        parseErrors = JSON.parse(container.getAttribute('data-parse-errors') || '{}');
-        parseErrorCells = JSON.parse(container.getAttribute('data-parse-error-cells') || '[]');
-    } catch (e) { return; }
+    var parseErrors = parseJsonAttribute(container, 'data-parse-errors', {});
+    var parseErrorCells = parseJsonAttribute(container, 'data-parse-error-cells', []);
 
     getQuestionControls(container).forEach(function (control) {
         control.classList.remove('pl-waveform-control-error');
@@ -1514,8 +1576,8 @@ function renderParseErrorOverlays(container) {
 // Score feedback after submission
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Append one whole-element score badge to a waveform container. */
-function appendElementScoreBadge(container, correct, total, pct, m, editableSignals) {
+/** Append one whole-waveform score badge to a waveform container. */
+function appendWaveformScoreBadge(container, correct, total, pct, m, editableSignals) {
     var badge = document.createElement('div');
     badge.className = 'pl-waveform-element-score-badge';
     if (pct === 100) badge.classList.add('pl-waveform-element-score-correct');
@@ -1524,7 +1586,7 @@ function appendElementScoreBadge(container, correct, total, pct, m, editableSign
     badge.textContent = correct + ' out of ' + total;
     badge.title = pct + '% correct';
 
-    positionWholeElementBadge(container, badge, m, editableSignals, 40);
+    positionWaveformBadge(container, badge, m, editableSignals, 40);
     container.appendChild(badge);
 }
 
@@ -1533,11 +1595,7 @@ function renderScoreFeedback(container) {
     var editableSignals = getEditableSignals(container);
     var feedback = container.getAttribute('data-feedback') || 'cell';
     var inputMode = getInputMode(container);
-    var cellScores = [];
-
-    try {
-        cellScores = JSON.parse(container.getAttribute('data-cell-scores') || '[]');
-    } catch (e) { return; }
+    var cellScores = parseJsonAttribute(container, 'data-cell-scores', []);
 
     if (cellScores.length === 0) return;
     clearScoreFeedbackState(container);
@@ -1545,14 +1603,10 @@ function renderScoreFeedback(container) {
     if (feedback === 'cell') {
         var toggleControls = Array.from(container.querySelectorAll('.pl-waveform-cell-hit'));
         if (inputMode === 'toggle' && toggleControls.length > 0) {
-            var toggleScoreMap = {};
-            cellScores.forEach(function (cell) {
-                toggleScoreMap[cell.signal_name + '|' + cell.cycle_num] = cell;
-            });
+            var toggleScoreMap = cellsBySignalCycle(cellScores);
 
             toggleControls.forEach(function (control) {
-                var mapKey = control.getAttribute('data-signal') + '|' + control.getAttribute('data-cycle');
-                var cell = toggleScoreMap[mapKey];
+                var cell = toggleScoreMap[signalCycleKey(control.getAttribute('data-signal'), control.getAttribute('data-cycle'))];
                 if (!cell) return;
 
                 clearFeedbackClasses(control);
@@ -1568,14 +1622,10 @@ function renderScoreFeedback(container) {
             // Text-mode keeps direct input tinting plus a small status badge.
             var BADGE = 14;
             var containerRect = container.getBoundingClientRect();
-            var scoreMap = {};
-            cellScores.forEach(function (cell) {
-                scoreMap[cell.signal_name + '|' + cell.cycle_num] = cell;
-            });
+            var scoreMap = cellsBySignalCycle(cellScores);
 
             textControls.forEach(function (inp) {
-                var mapKey = inp.getAttribute('data-signal') + '|' + inp.getAttribute('data-cycle');
-                var cell = scoreMap[mapKey];
+                var cell = scoreMap[signalCycleKey(inp.getAttribute('data-signal'), inp.getAttribute('data-cycle'))];
                 clearFeedbackClasses(inp);
                 if (!cell) return;
                 inp.classList.add(cellFeedbackClass(cell));
@@ -1585,10 +1635,7 @@ function renderScoreFeedback(container) {
                 var relT = r.top - containerRect.top;
 
                 var badge = createCellScoreBadge(cell, false);
-                badge.style.left = Math.round(relL + r.width - BADGE / 2) + 'px';
-                badge.style.top = Math.round(relT - BADGE / 2) + 'px';
-                badge.style.width = BADGE + 'px';
-                badge.style.height = BADGE + 'px';
+                setBoxGeometry(badge, relL + r.width - BADGE / 2, relT - BADGE / 2, BADGE, BADGE);
                 container.appendChild(badge);
             });
             return;
@@ -1652,10 +1699,7 @@ function renderScoreFeedback(container) {
             var strip = document.createElement('div');
             strip.className = 'pl-waveform-feedback-overlay ' +
                 (allCorrect ? 'pl-waveform-feedback-correct' : 'pl-waveform-feedback-incorrect');
-            strip.style.left = Math.round(rowBounds.left) + 'px';
-            strip.style.top = Math.round(sigY - rowH / 2) + 'px';
-            strip.style.width = Math.round(rowBounds.right - rowBounds.left) + 'px';
-            strip.style.height = rowH + 'px';
+            setBoxGeometry(strip, rowBounds.left, sigY - rowH / 2, rowBounds.right - rowBounds.left, rowH);
             container.appendChild(strip);
 
             var pill = document.createElement('div');
@@ -1677,6 +1721,6 @@ function renderScoreFeedback(container) {
         var total = cellScores.length;
         var correct = cellScores.filter(function (cell) { return cell.correct; }).length;
         var pct = total > 0 ? Math.round(100 * correct / total) : 0;
-        appendElementScoreBadge(container, correct, total, pct, mElement, editableSignals);
+        appendWaveformScoreBadge(container, correct, total, pct, mElement, editableSignals);
     }
 }
